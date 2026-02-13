@@ -1,0 +1,19 @@
+.{
+    .name = .havok,
+    .version = "0.0.0",
+    .fingerprint = 0x848380ad6a660905,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .wamr = .{
+            .url = "git+https://github.com/youdie323323/wamr-zig#c9e80361a65320054cf9cecbdd2d2d52840b884a",
+            .hash = "wamr-0.0.0-lFSRzdxCAADp0KC8HJ0LitQUMS2Yj38ziqwfBLspOlJD",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}

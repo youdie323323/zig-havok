@@ -109,6 +109,8 @@ const Emscripten = struct {
                 struct { bool, Type.Instance.Initializer },
             );
 
+            allocator: mem.Allocator,
+
             invoker: wamr.wasm_function_inst_t,
             type_instances: TypeInstances,
             function: u32,
@@ -207,35 +209,35 @@ pub const Shape = struct {
     const CreaterReturnType = struct { ResultStatus, ShapeId };
 
     pub fn createSphere(self: *@This(), center: Vector3, radius: f64) CreaterReturnType {
-        return create_sphere_impl(self.physics, center, radius);
+        return create_sphere_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateSphere"), center, radius);
     }
 
     pub fn createCapsule(self: *@This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturnType {
-        return create_capsule_impl(self.physics, point_a, point_b, radius);
+        return create_capsule_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCapsule"), point_a, point_b, radius);
     }
 
     pub fn createCylinder(self: *@This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturnType {
-        return create_cylinder_impl(self.physics, point_a, point_b, radius);
+        return create_cylinder_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCylinder"), point_a, point_b, radius);
     }
 
     pub fn createBox(self: *@This(), center: Vector3, rotation: Quaternion, extents: Vector3) CreaterReturnType {
-        return create_box_impl(self.physics, center, rotation, extents);
+        return create_box_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateBox"), center, rotation, extents);
     }
 
     pub fn createConvexHull(self: *@This(), vertices: u32, num_vertices: usize) CreaterReturnType {
-        return create_convex_hull_impl(self.physics, vertices, num_vertices);
+        return create_convex_hull_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateConvexHull"), vertices, num_vertices);
     }
 
     pub fn createMesh(self: *@This(), vertices: u32, num_vertices: usize, triangles: u32, num_triangles: usize) CreaterReturnType {
-        return create_mesh_impl(self.physics, vertices, num_vertices, triangles, num_triangles);
+        return create_mesh_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateMesh"), vertices, num_vertices, triangles, num_triangles);
     }
 
     pub fn createHeightField(self: *@This(), num_x_samples: usize, num_z_samples: usize, scale: Vector3, heights: u32) CreaterReturnType {
-        return create_height_field_impl(self.physics, num_x_samples, num_z_samples, scale, heights);
+        return create_height_field_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateHeightField"), num_x_samples, num_z_samples, scale, heights);
     }
 
     pub fn createContainer(self: *@This()) CreaterReturnType {
-        return create_container_impl(self.physics);
+        return create_container_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateContainer"));
     }
 
     pub var create_sphere_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
@@ -315,7 +317,7 @@ pub const Shape = struct {
     }
 
     pub fn pathIteratorGetNext(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_ShapePathIterator_GetNext", .{ a, b, c });
+        return self.physics.callExported("HP_Shape_PathIterator_GetNext", .{ a, b, c });
     }
 
     pub fn createDebugDisplayGeometry(self: *@This(), a: u32, b: u32) !u32 {
@@ -347,7 +349,8 @@ embind_tuple_registry: Emscripten.Bind.TupleRegistry,
 embind_awaiting_dependencies: Emscripten.Bind.AwaitingDependencies,
 
 embind_invoker_contexts: [cached_function_indices.kvs.len]?*Emscripten.Bind.InvokerContext = @splat(null),
-embind_invoker_context_index: u8 = 0,
+
+embind_invoker_function_indices: std.StringHashMap(usize),
 
 shape: Shape,
 debug_geometry: struct {
@@ -501,6 +504,7 @@ world: struct {
 
     pub fn getNumBodies(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_GetNumBodies", .{a, b}); }
 
+    pub fn castRay(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_CastRay", .{a, b, c}); }
     pub fn castRayWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_CastRayWithCollector", .{a, b, c}); }
     pub fn pointProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_PointProximityWithCollector", .{a, b, c}); }
     pub fn shapeProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_ShapeProximityWithCollector", .{a, b, c}); }
@@ -987,30 +991,77 @@ fn usesDestructorStack(type_instances: Emscripten.Bind.InvokerContext.TypeInstan
     return false;
 }
 
-fn createInvokerSignature(
-    allocator: mem.Allocator,
+const MethodSignature = enum {
+    ftf,
+    ftfn,
+    fffn,
+    ftfnnnn,
+    ftfnn,
+    ftftt,
+    ftft,
+    ftftn,
+    ftftnn,
+    ftfttn,
+    ftfttt,
+    ftfnntn,
+    ftftttt,
+};
+
+fn createMethodSignature(
     type_instances: Emscripten.Bind.InvokerContext.TypeInstances,
     returns: bool,
     is_async: bool,
-) ![]u8 {
-    var signature: array_list.Managed(u8) = .init(allocator);
+) !MethodSignature {
+    var buffer: [8]u8 = undefined;
+    var len: usize = 0;
 
-    try signature.appendSlice("f");
-    try signature.appendSlice(if (returns) "t" else "f");
-    try signature.appendSlice(if (is_async) "t" else "f");
+    buffer[len] = 'f';
+    len += 1;
+
+    buffer[len] = if (returns) 't' else 'f';
+    len += 1;
+
+    buffer[len] = if (is_async) 't' else 'f';
+    len += 1;
 
     for (type_instances.items[2..]) |item|
-        if (item) |type_instance|
-            try signature.appendSlice(
-                if (type_instance.destructor != null)
-                    "t"
-                else
-                    "n",
-            );
+        if (item) |type_instance| {
+            buffer[len] = if (type_instance.destructor != null) 't' else 'n';
 
-    return signature.toOwnedSlice();
+            len += 1;
+        };
+
+    return std.meta.stringToEnum(MethodSignature, buffer[0..len]) orelse error.InvalidSignature;
 }
 
+fn createMethodImplInner(comptime Return: type, signature: MethodSignature) MethodImpl(Return) {
+    return @ptrCast(&switch (signature) {
+        else => struct {
+            fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Return {
+                if (physics.embind_invoker_contexts[context_index]) |context| {
+                    defer {
+                        context.type_instances.deinit();
+
+                        context.allocator.destroy(context);
+                    }
+
+                    if (context.type_instances.items[0]) |return_type_instance| {
+                        const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+
+                        _ = return_type_instance;
+                        _ = return_raw;
+
+                        return mem.zeroes(Return);
+                    }
+                }
+
+                return mem.zeroes(Return);
+            }
+        }.impl,
+    });
+}
+
+/// type_instances must not be deinited after this function called.
 fn createMethodImpl(
     self: *HavokPhysics,
     comptime Return: type,
@@ -1019,21 +1070,21 @@ fn createMethodImpl(
     invoker: wamr.wasm_function_inst_t,
     function: u32,
     is_async: bool,
-) !struct { u8, MethodImpl(Return) } {
+) !MethodImpl(Return) {
+    const allocator = self.embind_allocator;
+
     const type_instances_len = type_instances.items.len;
-    if (type_instances_len < 2)
+    if (type_instances_len < 2) {
+        type_instances.deinit();
+
         return error.NotEnoughArgumentsCount;
+    }
 
     const returns =
         if (type_instances.items[0]) |item|
             !mem.eql(u8, item.name, "void")
         else
             false;
-
-    const allocator = self.embind_allocator;
-
-    const signature = try createInvokerSignature(allocator, type_instances, returns, is_async);
-    defer allocator.free(signature);
 
     var closure_args_destructors: Emscripten.Bind.InvokerContext.ClosureArgsDestructors = .init(allocator);
     defer closure_args_destructors.deinit();
@@ -1044,22 +1095,21 @@ fn createMethodImpl(
                 if (type_instance.destructor) |destructor|
                     try closure_args_destructors.append(.{ type_instance.is_destructor_wasm, destructor });
 
-    log.info("{s}, {any}", .{ name, type_instances.items[0].?.tuple_elements.?.items });
-
     const context = try allocator.create(Emscripten.Bind.InvokerContext);
 
     context.* = .{
+        .allocator = allocator,
+
         .invoker = invoker,
         .type_instances = type_instances,
         .function = function,
         .closure_args_destructors = closure_args_destructors,
     };
 
-    self.embind_invoker_contexts[self.embind_invoker_context_index] = context;
+    if (self.embind_invoker_function_indices.get(name)) |invoker_index|
+        self.embind_invoker_contexts[invoker_index] = context;
 
-    defer self.embind_invoker_context_index += 1;
-
-    return .{ self.embind_invoker_context_index, comptime noopImpl(Return) };
+    return createMethodImplInner(Return, try createMethodSignature(type_instances, returns, is_async));
 }
 
 fn embind_register_function(
@@ -1133,7 +1183,6 @@ fn embind_register_function(
                     }
 
                     var invoker_type_instances: Emscripten.Bind.InvokerContext.TypeInstances = .init(allocator_inner);
-                    defer invoker_type_instances.deinit();
 
                     invoker_type_instances.append(converters[0]) catch return &.{};
                     invoker_type_instances.append(null) catch return &.{};
@@ -1437,6 +1486,8 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
 
         .embind_awaiting_dependencies = .init(allocator),
 
+        .embind_invoker_function_indices = .init(allocator),
+
         .shape = .{ .physics = physics },
         .debug_geometry = .{ .physics = physics },
         .body = .{ .physics = physics },
@@ -1448,6 +1499,9 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
 
     physics.embind_arena = .init(allocator);
     physics.embind_allocator = physics.embind_arena.allocator();
+
+    for (function_names, 0..) |function_name, i| // Add function indices
+        try physics.embind_invoker_function_indices.put(function_name, i);
 
     var init_args = mem.zeroes(wamr.RuntimeInitArgs);
 
@@ -1562,6 +1616,8 @@ pub fn deinit(self: *HavokPhysics) void {
         self.embind_tuple_registry.deinit();
 
         self.embind_awaiting_dependencies.deinit();
+
+        self.embind_invoker_function_indices.deinit();
     }
 
     self.allocator.destroy(self);
@@ -1634,161 +1690,166 @@ pub fn registerType(
     log.debug("registered type id: {d}, name: {s}, kind: {any}", .{ id, instance.name, instance.kind });
 }
 
+const function_names = [_][]const u8{
+    "HP_GetStatistics",
+
+    "HP_Shape_CreateSphere",
+    "HP_Shape_CreateCapsule",
+    "HP_Shape_CreateCylinder",
+    "HP_Shape_CreateBox",
+    "HP_Shape_CreateConvexHull",
+    "HP_Shape_CreateMesh",
+    "HP_Shape_CreateHeightField",
+    "HP_Shape_CreateContainer",
+    "HP_Shape_Release",
+    "HP_Shape_GetType",
+    "HP_Shape_AddChild",
+    "HP_Shape_RemoveChild",
+    "HP_Shape_GetNumChildren",
+    "HP_Shape_GetChildShape",
+    "HP_Shape_SetChildQSTransform",
+    "HP_Shape_GetChildQSTransform",
+    "HP_Shape_SetFilterInfo",
+    "HP_Shape_GetFilterInfo",
+    "HP_Shape_SetMaterial",
+    "HP_Shape_GetMaterial",
+    "HP_Shape_SetDensity",
+    "HP_Shape_GetDensity",
+    "HP_Shape_GetBoundingBox",
+    "HP_Shape_CastRay",
+    "HP_Shape_BuildMassProperties",
+    "HP_Shape_SetTrigger",
+    "HP_Shape_PathIterator_GetNext",
+    "HP_Shape_CreateDebugDisplayGeometry",
+
+    "HP_DebugGeometry_GetInfo",
+    "HP_DebugGeometry_Release",
+
+    "HP_Body_Create",
+    "HP_Body_Release",
+    "HP_Body_SetShape",
+    "HP_Body_GetShape",
+    "HP_Body_SetMotionType",
+    "HP_Body_GetMotionType",
+    "HP_Body_SetEventMask",
+    "HP_Body_GetEventMask",
+    "HP_Body_SetMassProperties",
+    "HP_Body_GetMassProperties",
+    "HP_Body_SetLinearDamping",
+    "HP_Body_GetLinearDamping",
+    "HP_Body_SetAngularDamping",
+    "HP_Body_GetAngularDamping",
+    "HP_Body_SetGravityFactor",
+    "HP_Body_GetGravityFactor",
+    "HP_Body_GetWorld",
+    "HP_Body_GetWorldTransformOffset",
+    "HP_Body_SetPosition",
+    "HP_Body_GetPosition",
+    "HP_Body_SetOrientation",
+    "HP_Body_GetOrientation",
+    "HP_Body_SetQTransform",
+    "HP_Body_GetQTransform",
+    "HP_Body_SetTargetQTransform",
+    "HP_Body_SetLinearVelocity",
+    "HP_Body_GetLinearVelocity",
+    "HP_Body_SetAngularVelocity",
+    "HP_Body_GetAngularVelocity",
+    "HP_Body_ApplyImpulse",
+    "HP_Body_ApplyAngularImpulse",
+    "HP_Body_SetActivationState",
+    "HP_Body_GetActivationState",
+    "HP_Body_SetActivationControl",
+    "HP_Body_SetActivationPriority",
+
+    "HP_Constraint_Create",
+    "HP_Constraint_Release",
+    "HP_Constraint_SetParentBody",
+    "HP_Constraint_GetParentBody",
+    "HP_Constraint_SetChildBody",
+    "HP_Constraint_GetChildBody",
+    "HP_Constraint_SetAnchorInParent",
+    "HP_Constraint_SetAnchorInChild",
+    "HP_Constraint_SetCollisionsEnabled",
+    "HP_Constraint_GetCollisionsEnabled",
+    "HP_Constraint_GetAppliedImpulses",
+    "HP_Constraint_SetEnabled",
+    "HP_Constraint_GetEnabled",
+    "HP_Constraint_SetAxisMinLimit",
+    "HP_Constraint_GetAxisMinLimit",
+    "HP_Constraint_SetAxisMaxLimit",
+    "HP_Constraint_GetAxisMaxLimit",
+    "HP_Constraint_SetAxisMode",
+    "HP_Constraint_GetAxisMode",
+    "HP_Constraint_SetAxisFriction",
+    "HP_Constraint_GetAxisFriction",
+    "HP_Constraint_SetAxisMotorType",
+    "HP_Constraint_GetAxisMotorType",
+    "HP_Constraint_SetAxisMotorPositionTarget",
+    "HP_Constraint_GetAxisMotorPositionTarget",
+    "HP_Constraint_SetAxisMotorVelocityTarget",
+    "HP_Constraint_GetAxisMotorVelocityTarget",
+    "HP_Constraint_SetAxisMotorMaxForce",
+    "HP_Constraint_GetAxisMotorMaxForce",
+    "HP_Constraint_SetAxisMotorStiffness",
+    "HP_Constraint_GetAxisMotorStiffness",
+    "HP_Constraint_SetAxisMotorDamping",
+    "HP_Constraint_GetAxisMotorDamping",
+    "HP_Constraint_SetAxisMotorTarget",
+    "HP_Constraint_GetAxisMotorTarget",
+    "HP_Constraint_SetAxisStiffness",
+    "HP_Constraint_SetAxisDamping",
+
+    "HP_World_Create",
+    "HP_World_Release",
+    "HP_World_GetBodyBuffer",
+    "HP_World_SetGravity",
+    "HP_World_GetGravity",
+    "HP_World_AddBody",
+    "HP_World_RemoveBody",
+    "HP_World_GetNumBodies",
+    "HP_World_CastRay",
+    "HP_World_CastRayWithCollector",
+    "HP_World_PointProximityWithCollector",
+    "HP_World_ShapeProximityWithCollector",
+    "HP_World_ShapeCastWithCollector",
+    "HP_World_Step",
+    "HP_World_SetIdealStepTime",
+    "HP_World_SetSpeedLimit",
+    "HP_World_GetSpeedLimit",
+    "HP_World_GetCollisionEvents",
+    "HP_World_GetNextCollisionEvent",
+    "HP_Event_AsCollision",
+    "HP_World_GetTriggerEvents",
+    "HP_World_GetNextTriggerEvent",
+    "HP_Event_AsTrigger",
+
+    "HP_QueryCollector_Create",
+    "HP_QueryCollector_Release",
+    "HP_QueryCollector_GetNumHits",
+    "HP_QueryCollector_GetCastRayResult",
+    "HP_QueryCollector_GetPointProximityResult",
+    "HP_QueryCollector_GetShapeProximityResult",
+    "HP_QueryCollector_GetShapeCastResult",
+
+    "HP_Debug_StartRecordingStats",
+    "HP_Debug_StopRecordingStats",
+
+    "main",
+
+    "malloc",
+    "free",
+
+    "_malloc",
+    "_free",
+
+    "__getTypeName",
+
+    "__wasm_call_ctors",
+};
+
 const CachedFunctionIndices = comptime_string_map.ComptimeStringMap(comptime_int);
 
 const cached_function_indices: CachedFunctionIndices = blk: {
-    const function_names = [_][]const u8{
-        "__wasm_call_ctors",
-
-        "HP_GetStatistics",
-
-        "HP_Shape_CreateSphere",
-        "HP_Shape_CreateCapsule",
-        "HP_Shape_CreateCylinder",
-        "HP_Shape_CreateBox",
-        "HP_Shape_CreateConvexHull",
-        "HP_Shape_CreateMesh",
-        "HP_Shape_CreateHeightField",
-        "HP_Shape_CreateContainer",
-        "HP_Shape_Release",
-        "HP_Shape_GetType",
-        "HP_Shape_AddChild",
-        "HP_Shape_RemoveChild",
-        "HP_Shape_GetNumChildren",
-        "HP_Shape_GetChildShape",
-        "HP_Shape_SetChildQSTransform",
-        "HP_Shape_GetChildQSTransform",
-        "HP_Shape_SetFilterInfo",
-        "HP_Shape_GetFilterInfo",
-        "HP_Shape_SetMaterial",
-        "HP_Shape_GetMaterial",
-        "HP_Shape_SetDensity",
-        "HP_Shape_GetDensity",
-        "HP_Shape_GetBoundingBox",
-        "HP_Shape_CastRay",
-        "HP_Shape_BuildMassProperties",
-        "HP_Shape_SetTrigger",
-        "HP_ShapePathIterator_GetNext",
-        "HP_Shape_CreateDebugDisplayGeometry",
-
-        "HP_DebugGeometry_GetInfo",
-        "HP_DebugGeometry_Release",
-
-        "HP_Body_Create",
-        "HP_Body_Release",
-        "HP_Body_SetShape",
-        "HP_Body_GetShape",
-        "HP_Body_SetMotionType",
-        "HP_Body_GetMotionType",
-        "HP_Body_SetEventMask",
-        "HP_Body_GetEventMask",
-        "HP_Body_SetMassProperties",
-        "HP_Body_GetMassProperties",
-        "HP_Body_SetLinearDamping",
-        "HP_Body_GetLinearDamping",
-        "HP_Body_SetAngularDamping",
-        "HP_Body_GetAngularDamping",
-        "HP_Body_SetGravityFactor",
-        "HP_Body_GetGravityFactor",
-        "HP_Body_GetWorld",
-        "HP_Body_GetWorldTransformOffset",
-        "HP_Body_SetPosition",
-        "HP_Body_GetPosition",
-        "HP_Body_SetOrientation",
-        "HP_Body_GetOrientation",
-        "HP_Body_SetQTransform",
-        "HP_Body_GetQTransform",
-        "HP_Body_SetTargetQTransform",
-        "HP_Body_SetLinearVelocity",
-        "HP_Body_GetLinearVelocity",
-        "HP_Body_SetAngularVelocity",
-        "HP_Body_GetAngularVelocity",
-        "HP_Body_ApplyImpulse",
-        "HP_Body_ApplyAngularImpulse",
-        "HP_Body_SetActivationState",
-        "HP_Body_GetActivationState",
-        "HP_Body_SetActivationControl",
-        "HP_Body_SetActivationPriority",
-
-        "HP_Constraint_Create",
-        "HP_Constraint_Release",
-        "HP_Constraint_SetParentBody",
-        "HP_Constraint_GetParentBody",
-        "HP_Constraint_SetChildBody",
-        "HP_Constraint_GetChildBody",
-        "HP_Constraint_SetAnchorInParent",
-        "HP_Constraint_SetAnchorInChild",
-        "HP_Constraint_SetCollisionsEnabled",
-        "HP_Constraint_GetCollisionsEnabled",
-        "HP_Constraint_GetAppliedImpulses",
-        "HP_Constraint_SetEnabled",
-        "HP_Constraint_GetEnabled",
-        "HP_Constraint_SetAxisMinLimit",
-        "HP_Constraint_GetAxisMinLimit",
-        "HP_Constraint_SetAxisMaxLimit",
-        "HP_Constraint_GetAxisMaxLimit",
-        "HP_Constraint_SetAxisMode",
-        "HP_Constraint_GetAxisMode",
-        "HP_Constraint_SetAxisFriction",
-        "HP_Constraint_GetAxisFriction",
-        "HP_Constraint_SetAxisMotorType",
-        "HP_Constraint_GetAxisMotorType",
-        "HP_Constraint_SetAxisMotorPositionTarget",
-        "HP_Constraint_GetAxisMotorPositionTarget",
-        "HP_Constraint_SetAxisMotorVelocityTarget",
-        "HP_Constraint_GetAxisMotorVelocityTarget",
-        "HP_Constraint_SetAxisMotorMaxForce",
-        "HP_Constraint_GetAxisMotorMaxForce",
-        "HP_Constraint_SetAxisMotorStiffness",
-        "HP_Constraint_GetAxisMotorStiffness",
-        "HP_Constraint_SetAxisMotorDamping",
-        "HP_Constraint_GetAxisMotorDamping",
-        "HP_Constraint_SetAxisMotorTarget",
-        "HP_Constraint_GetAxisMotorTarget",
-        "HP_Constraint_SetAxisStiffness",
-        "HP_Constraint_SetAxisDamping",
-
-        "HP_World_Create",
-        "HP_World_Release",
-        "HP_World_GetBodyBuffer",
-        "HP_World_SetGravity",
-        "HP_World_GetGravity",
-        "HP_World_AddBody",
-        "HP_World_RemoveBody",
-        "HP_World_GetNumBodies",
-        "HP_World_CastRayWithCollector",
-        "HP_World_PointProximityWithCollector",
-        "HP_World_ShapeProximityWithCollector",
-        "HP_World_ShapeCastWithCollector",
-        "HP_World_Step",
-        "HP_World_SetIdealStepTime",
-        "HP_World_SetSpeedLimit",
-        "HP_World_GetSpeedLimit",
-        "HP_World_GetNextCollisionEvent",
-        "HP_World_GetNextTriggerEvent",
-
-        "HP_QueryCollector_Create",
-        "HP_QueryCollector_Release",
-        "HP_QueryCollector_GetNumHits",
-        "HP_QueryCollector_GetCastRayResult",
-        "HP_QueryCollector_GetPointProximityResult",
-        "HP_QueryCollector_GetShapeProximityResult",
-        "HP_QueryCollector_GetShapeCastResult",
-
-        "HP_Debug_StartRecordingStats",
-        "HP_Debug_StopRecordingStats",
-
-        "main",
-
-        "malloc",
-        "free",
-
-        "_malloc",
-        "_free",
-
-        "__getTypeName",
-    };
-
     var kvs: CachedFunctionIndices.KeyValues = &.{};
 
     for (function_names, 0..) |name, i|
@@ -1869,6 +1930,7 @@ const array_list = std.array_list;
 const atomic = std.atomic;
 const math = std.math;
 const heap = std.heap;
+const meta = std.meta;
 
 const wamr = @import("wamr").wasm_export;
 

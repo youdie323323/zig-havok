@@ -27,15 +27,15 @@ const Emscripten = struct {
                 kind: Kind,
 
                 destructor: ?Initializer = null,
-                /// Describes if destructor gets the first argument type as *HavokPhysics.
+                /// Describes if destructor gets the first argument as *HavokPhysics.
                 is_destructor_wasm: bool = false,
 
                 size: ?u32 = null,
 
                 is_signed: ?bool = null,
 
-                true_value: ?i32 = null,
-                false_value: ?i32 = null,
+                true_value: ?u32 = null,
+                false_value: ?u32 = null,
 
                 data_type: ?u8 = null,
 
@@ -47,6 +47,37 @@ const Emscripten = struct {
                     .name = "emscripten::val",
                     .kind = .emval,
                 };
+
+                const void_wire_inner = 0;
+                const void_wire: *const anyopaque = @ptrCast(&void_wire_inner);
+
+                const false_wire_inner = false;
+                const false_wire: *const anyopaque = @ptrCast(&false_wire_inner);
+
+                const true_wire_inner = true;
+                const true_wire: *const anyopaque = @ptrCast(&true_wire_inner);
+
+                pub fn fromWire(self: *const Instance, wire: u32) *const anyopaque {
+                    return switch (self.kind) {
+                        .void => void_wire,
+                        .bool => if (wire != 0)
+                            true_wire
+                        else
+                            false_wire,
+                        else => unreachable,
+                    };
+                }
+
+                pub fn toWire(self: *const Instance, val: *const anyopaque) u32 {
+                    return switch (self.kind) {
+                        .void => 0,
+                        .bool => if (@as(*const bool, @ptrCast(@alignCast(val))).*)
+                            self.true_value.?
+                        else
+                            self.false_value.?,
+                        else => unreachable,
+                    };
+                }
             };
 
             pub const Registry = std.AutoHashMap(Id, *const Instance);
@@ -102,20 +133,17 @@ const Emscripten = struct {
         pub const AwaitingDependencies = std.AutoHashMap(Type.Id, array_list.Managed(*DependencyWaiter));
 
         pub const InvokerContext = struct {
-            pub const TypeInstances = array_list.Managed(?*const Type.Instance);
-
-            pub const ClosureArgsDestructors = array_list.Managed(
-                // { is_wasm, destructor }
-                struct { bool, Type.Instance.Initializer },
-            );
+            const max_args = 8;
 
             invoker: wamr.wasm_function_inst_t,
 
-            type_instances: TypeInstances,
-
             function: u32,
 
-            closure_args_destructors: ClosureArgsDestructors,
+            return_type_instance: *const Type.Instance,
+
+            arg_type_instances: [max_args]*const Type.Instance = undefined,
+
+            destructors: [max_args]struct { bool, Type.Instance.Initializer } = undefined,
         };
     };
 
@@ -611,7 +639,7 @@ fn readLatin1String(physics: *HavokPhysics, ptr: u32) ![]u8 {
     if (raw_ptr == null)
         return error.InvalidMemoryAccess;
 
-    const native_ptr: [*]u8 = @ptrCast(raw_ptr);
+    const native_ptr: [*]u8 = @ptrCast(@alignCast(raw_ptr));
 
     var list: std.ArrayList(u8) = .empty;
     errdefer list.deinit(allocator);
@@ -795,8 +823,8 @@ fn embind_register_bool(
             .name = name,
             .kind = .bool,
 
-            .true_value = true_value,
-            .false_value = false_value,
+            .true_value = @intCast(true_value),
+            .false_value = @intCast(false_value),
         };
 
         physics.registerType(type_id, instance) catch {
@@ -983,10 +1011,10 @@ fn embind_register_memory_view(
     }
 }
 
-fn usesDestructorStack(type_instances: Emscripten.Bind.InvokerContext.TypeInstances) bool {
-    for (type_instances.items[1..]) |item|
-        if (item) |item_inner|
-            if (item_inner.destructor == null)
+fn usesDestructorStack(type_instances: []?*const Emscripten.Bind.Type.Instance) bool {
+    for (type_instances[1..]) |item|
+        if (item) |type_instance|
+            if (type_instance.destructor == null)
                 return true;
 
     return false;
@@ -1009,7 +1037,7 @@ const MethodSignature = enum {
 };
 
 fn createMethodSignature(
-    type_instances: Emscripten.Bind.InvokerContext.TypeInstances,
+    type_instances: []?*const Emscripten.Bind.Type.Instance,
     returns: bool,
     is_async: bool,
 ) !MethodSignature {
@@ -1025,7 +1053,7 @@ fn createMethodSignature(
     buffer[len] = if (is_async) 't' else 'f';
     len += 1;
 
-    for (type_instances.items[2..]) |item|
+    for (type_instances[2..]) |item|
         if (item) |type_instance| {
             buffer[len] = if (type_instance.destructor != null) 't' else 'n';
 
@@ -1036,57 +1064,39 @@ fn createMethodSignature(
 }
 
 fn createMethodImplInner(comptime Return: type, signature: MethodSignature) MethodImpl(Return) {
-    return @ptrCast(&switch (signature) {
-        .ftf => struct {
+    return switch (signature) {
+        .ftf => @ptrCast(&struct {
             fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Return {
-                if (physics.embind_invoker_contexts[context_index]) |context|
-                    if (context.type_instances.items[0]) |return_type_instance| {
-                        const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
-                        _ = return_type_instance;
-                        _ = return_raw;
+                const return_wired = physics.call(context.invoker, .{context.function}) catch unreachable;
 
-                        return mem.zeroes(Return);
-                    };
-
-                return mem.zeroes(Return);
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
             }
-        }.impl,
-        .ftfn => struct {
+        }.impl),
+        .ftfn => @ptrCast(&struct {
             fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
-                _ = arg_0;
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
-                if (physics.embind_invoker_contexts[context_index]) |context|
-                    if (context.type_instances.items[0]) |return_type_instance|
-                        if (context.type_instances.items[2]) |arg_0_type_instance| {
-                            const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
-                            _ = return_type_instance;
-                            _ = arg_0_type_instance;
-                            _ = return_raw;
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
 
-                            return mem.zeroes(Return);
-                        };
-
-                return mem.zeroes(Return);
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
             }
-        }.impl,
-        .fffn => struct { // We here want to constantly change Return to void, but it may be broken in later changes
+        }.impl),
+        .fffn => @ptrCast(&struct { // We here want to constantly change Return to void, but it may be broken in later changes
             fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
-                _ = arg_0;
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
-                if (physics.embind_invoker_contexts[context_index]) |context|
-                    if (context.type_instances.items[2]) |arg_0_type_instance| {
-                        const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
-                        _ = arg_0_type_instance;
-                        _ = return_raw;
-                    };
+                _ = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
 
                 return mem.zeroes(Return);
             }
-        }.impl,
-        .ftfnnnn => struct {
+        }.impl),
+        else => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
@@ -1095,83 +1105,69 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_2: *const anyopaque,
                 arg_3: *const anyopaque,
             ) callconv(.c) Return {
-                _ = arg_0;
-                _ = arg_1;
-                _ = arg_2;
-                _ = arg_3;
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
-                if (physics.embind_invoker_contexts[context_index]) |context|
-                    if (context.type_instances.items[0]) |return_type_instance|
-                        if (context.type_instances.items[2]) |arg_0_type_instance| {
-                            if (context.type_instances.items[3]) |arg_1_type_instance| {
-                                if (context.type_instances.items[4]) |arg_2_type_instance| {
-                                    if (context.type_instances.items[5]) |arg_3_type_instance| {
-                                        const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+                const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
+                const arg_3_wired = context.arg_type_instances[3].toWire(arg_3);
 
-                                        _ = return_type_instance;
-                                        _ = arg_0_type_instance;
-                                        _ = arg_1_type_instance;
-                                        _ = arg_2_type_instance;
-                                        _ = arg_3_type_instance;
-                                        _ = return_raw;
+                const return_wired = physics.call(context.invoker, .{
+                    context.function,
+                    arg_0_wired,
+                    arg_1_wired,
+                    arg_2_wired,
+                    arg_3_wired,
+                }) catch unreachable;
 
-                                        return mem.zeroes(Return);
-                                    }
-                                }
-                            }
-                        };
-
-                return mem.zeroes(Return);
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
             }
-        }.impl,
-    });
+        }.impl),
+    };
 }
 
 /// type_instances must not be deinited after this function called.
+/// type_instances's parent array list deinited when arena's deinit called.
 fn createMethodImpl(
     self: *HavokPhysics,
     comptime Return: type,
     name: []u8,
-    type_instances: Emscripten.Bind.InvokerContext.TypeInstances,
+    type_instances: []?*const Emscripten.Bind.Type.Instance,
     invoker: wamr.wasm_function_inst_t,
     function: u32,
     is_async: bool,
 ) !MethodImpl(Return) {
     const allocator = self.embind_allocator;
 
-    const type_instances_len = type_instances.items.len;
-    if (type_instances_len < 2) {
-        type_instances.deinit();
-
+    const type_instances_len = type_instances.len;
+    if (type_instances_len < 2)
         return error.NotEnoughArgumentsCount;
-    }
 
     const returns =
-        if (type_instances.items[0]) |item|
+        if (type_instances[0]) |item|
             !mem.eql(u8, item.name, "void")
         else
             false;
-
-    var closure_args_destructors: Emscripten.Bind.InvokerContext.ClosureArgsDestructors = .init(allocator);
-    defer closure_args_destructors.deinit();
-
-    if (!usesDestructorStack(type_instances))
-        for (type_instances.items[2..]) |item|
-            if (item) |type_instance|
-                if (type_instance.destructor) |destructor|
-                    try closure_args_destructors.append(.{ type_instance.is_destructor_wasm, destructor });
 
     const context = try allocator.create(Emscripten.Bind.InvokerContext);
 
     context.* = .{
         .invoker = invoker,
 
-        .type_instances = type_instances,
-
         .function = function,
 
-        .closure_args_destructors = closure_args_destructors,
+        .return_type_instance = type_instances[0] orelse return error.MissingReturnType,
     };
+
+    for (type_instances[2..], 0..) |type_instance, i|
+        context.arg_type_instances[i] = type_instance orelse return error.MissingArgumentType;
+
+    if (!usesDestructorStack(type_instances))
+        for (type_instances[2..], 0..) |item, i|
+            if (item) |type_instance| {
+                if (type_instance.destructor) |destructor|
+                    context.destructors[i] = .{ type_instance.is_destructor_wasm, destructor };
+            };
 
     if (self.embind_invoker_function_indices.get(name)) |invoker_index|
         self.embind_invoker_contexts[invoker_index] = context;
@@ -1249,20 +1245,40 @@ fn embind_register_function(
                         allocator_inner.destroy(register_context_inner);
                     }
 
-                    var invoker_type_instances: Emscripten.Bind.InvokerContext.TypeInstances = .init(allocator_inner);
+                    var invoker_type_instances: array_list.Managed(?*const Emscripten.Bind.Type.Instance) = .init(allocator_inner);
 
-                    invoker_type_instances.append(converters[0]) catch return &.{};
-                    invoker_type_instances.append(null) catch return &.{};
-                    invoker_type_instances.appendSlice(@ptrCast(converters[1..])) catch return &.{};
+                    invoker_type_instances.append(converters[0]) catch {
+                        invoker_type_instances.deinit();
+
+                        return &.{};
+                    };
+                    invoker_type_instances.append(null) catch {
+                        invoker_type_instances.deinit();
+
+                        return &.{};
+                    };
+                    invoker_type_instances.appendSlice(@ptrCast(converters[1..])) catch {
+                        invoker_type_instances.deinit();
+
+                        return &.{};
+                    };
 
                     const method_impl = physics_inner.createMethodImpl(
                         struct {},
                         register_context_inner.name,
-                        invoker_type_instances,
+                        invoker_type_instances.toOwnedSlice() catch {
+                            invoker_type_instances.deinit();
+
+                            return &.{};
+                        },
                         register_context_inner.invoker,
                         register_context_inner.function,
                         register_context_inner.is_async,
-                    ) catch return &.{};
+                    ) catch {
+                        invoker_type_instances.deinit();
+
+                        return &.{};
+                    };
 
                     _ = method_impl;
 

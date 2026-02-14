@@ -1056,7 +1056,6 @@ fn createMethodSignature(
     for (type_instances[2..]) |item|
         if (item) |type_instance| {
             buffer[len] = if (type_instance.destructor != null) 't' else 'n';
-
             len += 1;
         };
 

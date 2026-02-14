@@ -1096,7 +1096,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 return mem.zeroes(Return);
             }
         }.impl),
-        else => @ptrCast(&struct {
+        .ftfnnnn => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
@@ -1119,6 +1119,314 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                     arg_2_wired,
                     arg_3_wired,
                 }) catch unreachable;
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftfnn => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftftt => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                { // Destruct arg_1_wired
+                    const is_destructor_wasm, const destructor = context.destructors[1];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_1_wired)
+                    else
+                        destructor(physics, arg_1_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftft => @ptrCast(&struct {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftftn => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftftnn => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+                arg_2: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+                const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftfttn => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+                arg_2: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+                const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                { // Destruct arg_1_wired
+                    const is_destructor_wasm, const destructor = context.destructors[1];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_1_wired)
+                    else
+                        destructor(physics, arg_1_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftfttt => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+                arg_2: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+                const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
+
+                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                { // Destruct arg_1_wired
+                    const is_destructor_wasm, const destructor = context.destructors[1];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_1_wired)
+                    else
+                        destructor(physics, arg_1_wired);
+                }
+
+                { // Destruct arg_2_wired
+                    const is_destructor_wasm, const destructor = context.destructors[2];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_2_wired)
+                    else
+                        destructor(physics, arg_2_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftfnntn => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+                arg_2: *const anyopaque,
+                arg_3: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+                const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
+                const arg_3_wired = context.arg_type_instances[3].toWire(arg_3);
+
+                const return_wired = physics.call(context.invoker, .{
+                    context.function,
+                    arg_0_wired,
+                    arg_1_wired,
+                    arg_2_wired,
+                    arg_3_wired,
+                }) catch unreachable;
+
+                { // Destruct arg_2_wired
+                    const is_destructor_wasm, const destructor = context.destructors[2];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_2_wired)
+                    else
+                        destructor(physics, arg_2_wired);
+                }
+
+                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+            }
+        }.impl),
+        .ftftttt => @ptrCast(&struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+                arg_2: *const anyopaque,
+                arg_3: *const anyopaque,
+            ) callconv(.c) Return {
+                const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
+
+                const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
+                const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
+                const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
+                const arg_3_wired = context.arg_type_instances[3].toWire(arg_3);
+
+                const return_wired = physics.call(context.invoker, .{
+                    context.function,
+                    arg_0_wired,
+                    arg_1_wired,
+                    arg_2_wired,
+                    arg_3_wired,
+                }) catch unreachable;
+
+                { // Destruct arg_0_wired
+                    const is_destructor_wasm, const destructor = context.destructors[0];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_0_wired)
+                    else
+                        destructor(physics, arg_0_wired);
+                }
+
+                { // Destruct arg_1_wired
+                    const is_destructor_wasm, const destructor = context.destructors[1];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_1_wired)
+                    else
+                        destructor(physics, arg_1_wired);
+                }
+
+                { // Destruct arg_2_wired
+                    const is_destructor_wasm, const destructor = context.destructors[2];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_2_wired)
+                    else
+                        destructor(physics, arg_2_wired);
+                }
+
+                { // Destruct arg_3_wired
+                    const is_destructor_wasm, const destructor = context.destructors[3];
+
+                    if (is_destructor_wasm)
+                        destructor(arg_3_wired)
+                    else
+                        destructor(physics, arg_3_wired);
+                }
 
                 return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
             }

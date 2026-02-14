@@ -109,11 +109,12 @@ const Emscripten = struct {
                 struct { bool, Type.Instance.Initializer },
             );
 
-            allocator: mem.Allocator,
-
             invoker: wamr.wasm_function_inst_t,
+
             type_instances: TypeInstances,
+
             function: u32,
+
             closure_args_destructors: ClosureArgsDestructors,
         };
     };
@@ -209,31 +210,31 @@ pub const Shape = struct {
     const CreaterReturnType = struct { ResultStatus, ShapeId };
 
     pub fn createSphere(self: *@This(), center: Vector3, radius: f64) CreaterReturnType {
-        return create_sphere_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateSphere"), center, radius);
+        return create_sphere_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateSphere"), &center, &radius);
     }
 
     pub fn createCapsule(self: *@This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturnType {
-        return create_capsule_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCapsule"), point_a, point_b, radius);
+        return create_capsule_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCapsule"), &point_a, &point_b, &radius);
     }
 
     pub fn createCylinder(self: *@This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturnType {
-        return create_cylinder_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCylinder"), point_a, point_b, radius);
+        return create_cylinder_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCylinder"), &point_a, &point_b, &radius);
     }
 
     pub fn createBox(self: *@This(), center: Vector3, rotation: Quaternion, extents: Vector3) CreaterReturnType {
-        return create_box_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateBox"), center, rotation, extents);
+        return create_box_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateBox"), &center, &rotation, &extents);
     }
 
     pub fn createConvexHull(self: *@This(), vertices: u32, num_vertices: usize) CreaterReturnType {
-        return create_convex_hull_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateConvexHull"), vertices, num_vertices);
+        return create_convex_hull_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateConvexHull"), &vertices, &num_vertices);
     }
 
     pub fn createMesh(self: *@This(), vertices: u32, num_vertices: usize, triangles: u32, num_triangles: usize) CreaterReturnType {
-        return create_mesh_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateMesh"), vertices, num_vertices, triangles, num_triangles);
+        return create_mesh_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateMesh"), &vertices, &num_vertices, &triangles, &num_triangles);
     }
 
     pub fn createHeightField(self: *@This(), num_x_samples: usize, num_z_samples: usize, scale: Vector3, heights: u32) CreaterReturnType {
-        return create_height_field_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateHeightField"), num_x_samples, num_z_samples, scale, heights);
+        return create_height_field_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateHeightField"), &num_x_samples, &num_z_samples, &scale, &heights);
     }
 
     pub fn createContainer(self: *@This()) CreaterReturnType {
@@ -1031,20 +1032,14 @@ fn createMethodSignature(
             len += 1;
         };
 
-    return std.meta.stringToEnum(MethodSignature, buffer[0..len]) orelse error.InvalidSignature;
+    return meta.stringToEnum(MethodSignature, buffer[0..len]) orelse error.InvalidSignature;
 }
 
 fn createMethodImplInner(comptime Return: type, signature: MethodSignature) MethodImpl(Return) {
     return @ptrCast(&switch (signature) {
-        else => struct {
+        .ftf => struct {
             fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Return {
-                if (physics.embind_invoker_contexts[context_index]) |context| {
-                    defer {
-                        context.type_instances.deinit();
-
-                        context.allocator.destroy(context);
-                    }
-
+                if (physics.embind_invoker_contexts[context_index]) |context|
                     if (context.type_instances.items[0]) |return_type_instance| {
                         const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
 
@@ -1052,8 +1047,79 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         _ = return_raw;
 
                         return mem.zeroes(Return);
-                    }
-                }
+                    };
+
+                return mem.zeroes(Return);
+            }
+        }.impl,
+        .ftfn => struct {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
+                _ = arg_0;
+
+                if (physics.embind_invoker_contexts[context_index]) |context|
+                    if (context.type_instances.items[0]) |return_type_instance|
+                        if (context.type_instances.items[2]) |arg_0_type_instance| {
+                            const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+
+                            _ = return_type_instance;
+                            _ = arg_0_type_instance;
+                            _ = return_raw;
+
+                            return mem.zeroes(Return);
+                        };
+
+                return mem.zeroes(Return);
+            }
+        }.impl,
+        .fffn => struct { // We here want to constantly change Return to void, but it may be broken in later changes
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
+                _ = arg_0;
+
+                if (physics.embind_invoker_contexts[context_index]) |context|
+                    if (context.type_instances.items[2]) |arg_0_type_instance| {
+                        const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+
+                        _ = arg_0_type_instance;
+                        _ = return_raw;
+                    };
+
+                return mem.zeroes(Return);
+            }
+        }.impl,
+        .ftfnnnn => struct {
+            fn impl(
+                physics: *HavokPhysics,
+                context_index: u8,
+                arg_0: *const anyopaque,
+                arg_1: *const anyopaque,
+                arg_2: *const anyopaque,
+                arg_3: *const anyopaque,
+            ) callconv(.c) Return {
+                _ = arg_0;
+                _ = arg_1;
+                _ = arg_2;
+                _ = arg_3;
+
+                if (physics.embind_invoker_contexts[context_index]) |context|
+                    if (context.type_instances.items[0]) |return_type_instance|
+                        if (context.type_instances.items[2]) |arg_0_type_instance| {
+                            if (context.type_instances.items[3]) |arg_1_type_instance| {
+                                if (context.type_instances.items[4]) |arg_2_type_instance| {
+                                    if (context.type_instances.items[5]) |arg_3_type_instance| {
+                                        const return_raw = physics.call(context.invoker, .{context.function}) catch unreachable;
+
+                                        _ = return_type_instance;
+                                        _ = arg_0_type_instance;
+                                        _ = arg_1_type_instance;
+                                        _ = arg_2_type_instance;
+                                        _ = arg_3_type_instance;
+                                        _ = return_raw;
+
+                                        return mem.zeroes(Return);
+                                    }
+                                }
+                            }
+                        };
 
                 return mem.zeroes(Return);
             }
@@ -1098,11 +1164,12 @@ fn createMethodImpl(
     const context = try allocator.create(Emscripten.Bind.InvokerContext);
 
     context.* = .{
-        .allocator = allocator,
-
         .invoker = invoker,
+
         .type_instances = type_instances,
+
         .function = function,
+
         .closure_args_destructors = closure_args_destructors,
     };
 

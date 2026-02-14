@@ -207,7 +207,7 @@ const Rotation = @Vector(3, Vector3);
 const QTransform = struct { Vector3, Quaternion };
 const QSTransform = struct { Vector3, Quaternion, Vector3 };
 const Transform = struct { Vector3, Rotation };
-const AABB = struct { Vector3, Vector3 };
+const Aabb = struct { Vector3, Vector3 };
 
 const BodyId = struct { c_longlong };
 const ShapeId = struct { c_longlong };
@@ -232,6 +232,17 @@ const MaterialCombine = enum(c_int) {
     multiply,
 };
 
+const MassProperties = struct {
+    /// Center of mass.
+    Vector3,
+    /// Mass.
+    f64,
+    /// Inertia for mass of 1.
+    Vector3,
+    /// Inertia Orientation.
+    Quaternion,
+};
+
 const Material = struct {
     /// Static friction.
     f64,
@@ -252,10 +263,6 @@ const FilterInfo = struct {
     f64,
 };
 
-fn ReturnTypeOf(comptime @"fn": anytype) type {
-    return @typeInfo(@TypeOf(@"fn")).@"fn".return_type.?;
-}
-
 inline fn castWire(comptime T: type, wire: Emscripten.Bind.Type.Instance.Wire) T {
     return @as(*allowzero const T, @ptrCast(@alignCast(wire))).*;
 }
@@ -273,10 +280,32 @@ fn replaceMethodImpl(
         cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull") => Shape.create_convex_hull_impl = function,
         cached_function_indices.getDefinitely("HP_Shape_CreateMesh") => Shape.create_mesh_impl = function,
         cached_function_indices.getDefinitely("HP_Shape_CreateHeightField") => Shape.create_height_field_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
 
         cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo") => Shape.set_filter_info_impl = function,
         cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo") => Shape.get_filter_info_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_SetMaterial") => Shape.set_material_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_GetMaterial") => Shape.get_material_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetDensity") => Shape.get_density_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_SetDensity") => Shape.set_density_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_AddChild") => Shape.add_child_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_RemoveChild") => Shape.remove_child_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetNumChildren") => Shape.get_num_children_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetChildShape") => Shape.get_child_shape_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetType") => Shape.get_type_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext") => Shape.path_iterator_get_next_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_SetTrigger") => Shape.set_trigger_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => Shape.create_debug_display_geometry_impl = function,
 
         else => undefined,
     }
@@ -284,6 +313,18 @@ fn replaceMethodImpl(
 
 pub const Shape = struct {
     physics: *HavokPhysics,
+
+    pub const Type = enum(c_int) {
+        collider,
+        container,
+    };
+
+    pub const PathIterator = struct {
+        /// ShapeId.
+        c_longlong,
+        /// Path data.
+        c_longlong,
+    };
 
     const CreaterReturn = struct { Result, ShapeId };
 
@@ -445,44 +486,80 @@ pub const Shape = struct {
 
     pub var get_child_shape_impl = &noopImpl;
 
-    pub fn release(self: *const @This(), a: u32) !u32 {
-        return self.physics.callExported("HP_Shape_Release", .{a});
+    const GetTypeReturn = struct { Result, Type };
+
+    /// Get the type of the shape.
+    pub inline fn getType(self: *const @This(), id: ShapeId) GetTypeReturn {
+        return castWire(GetTypeReturn, get_type_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")), &id));
     }
 
-    pub fn getType(self: *const @This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetType", .{ a, b });
+    pub var get_type_impl = &noopImpl;
+
+    const GetBoundingBoxReturn = struct { Result, Aabb };
+
+    /// Retrieve the axis aligned bounding box of `shape` located at `worldFromShape`.
+    pub inline fn getBoundingBox(self: *const @This(), id: ShapeId, worlf_from_shape: QTransform) GetBoundingBoxReturn {
+        return castWire(GetBoundingBoxReturn, get_bounding_box_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox")), &id, &worlf_from_shape));
     }
 
-    pub fn setChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_Shape_SetChildQSTransform", .{ a, b, c });
-    }
-    pub fn getChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetChildQSTransform", .{ a, b, c });
+    pub var get_bounding_box_impl = &noopImpl;
+
+    /// Release a shape, freeing memory if it is unused.
+    pub inline fn release(self: *const @This(), id: ShapeId) Result {
+        return castWire(Result, release_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")), &id));
     }
 
-    pub fn getBoundingBox(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetBoundingBox", .{ a, b, c });
+    pub var release_impl = &noopImpl;
+
+    // pub fn setChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
+    //     return self.physics.callExported("HP_Shape_SetChildQSTransform", .{ a, b, c });
+    // }
+    // pub fn getChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
+    //     return self.physics.callExported("HP_Shape_GetChildQSTransform", .{ a, b, c });
+    // }
+
+    // pub fn castRay(self: *const @This(), a: u32, b: u32, c: u32, d: u32, e: u32) !u32 {
+    //     return self.physics.callExported("HP_Shape_CastRay", .{ a, b, c, d, e });
+    // }
+
+    const BuildMassPropertiesReturn = struct { Result, MassProperties };
+
+    /// Calculates the mass properties of the shape.
+    pub inline fn buildMassProperties(self: *const @This(), id: ShapeId) BuildMassPropertiesReturn {
+        return castWire(BuildMassPropertiesReturn, build_mass_properties_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties")), &id));
     }
 
-    pub fn castRay(self: *const @This(), a: u32, b: u32, c: u32, d: u32, e: u32) !u32 {
-        return self.physics.callExported("HP_Shape_CastRay", .{ a, b, c, d, e });
+    pub var build_mass_properties_impl = &noopImpl;
+
+    const PathIteratorGetNextReturn = struct { Result, PathIterator, f64 };
+
+    /// Allows descending a hierarchy of shape containers, advancing `current_item` to the next entry.
+    pub inline fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIteratorGetNextReturn {
+        return castWire(PathIteratorGetNextReturn, path_iterator_get_next_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")), &current_item));
     }
 
-    pub fn buildMassProperties(self: *const @This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_BuildMassProperties", .{ a, b });
+    pub var path_iterator_get_next_impl = &noopImpl;
+
+    /// Mark this shape as a trigger. A trigger will generate events, rather than applying impulses to prevent overlap.
+    /// Any material set on this shape will be unused. This has no effect on container shapes, as they don't have any
+    /// geometry themselves.
+    ///
+    /// Note: Currently, when one of the shapes overlapping a trigger is a mesh shape, one event will be raised per
+    /// overlapping triangle. This is subject to change, as it can cause performance issues.
+    pub inline fn setTrigger(self: *const @This(), id: ShapeId, is_trigger: bool) Result {
+        return castWire(Result, set_trigger_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetTrigger")), &id, &is_trigger));
     }
 
-    pub fn setTrigger(self: *const @This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_SetTrigger", .{ a, b });
+    pub var set_trigger_impl = &noopImpl;
+
+    const CreateDebugDisplayGeometryReturn = struct { Result, DebugGeometryId };
+
+    /// Generates a visualization of a shape's geometry, suitable for debugging.
+    pub inline fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) CreateDebugDisplayGeometryReturn {
+        return castWire(CreateDebugDisplayGeometryReturn, create_debug_display_geometry_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")), &id));
     }
 
-    pub fn pathIteratorGetNext(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_Shape_PathIterator_GetNext", .{ a, b, c });
-    }
-
-    pub fn createDebugDisplayGeometry(self: *const @This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_CreateDebugDisplayGeometry", .{ a, b });
-    }
+    pub var create_debug_display_geometry_impl = &noopImpl;
 };
 
 allocator: mem.Allocator,

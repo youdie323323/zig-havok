@@ -23,6 +23,8 @@ const Emscripten = struct {
             pub const Instance = struct {
                 pub const Initializer = *const fn (...) callconv(.c) void;
 
+                pub const Wire = *allowzero const anyopaque;
+
                 name: []const u8,
                 kind: Kind,
 
@@ -57,7 +59,7 @@ const Emscripten = struct {
                 const true_wire_inner = true;
                 const true_wire: *const anyopaque = @ptrCast(&true_wire_inner);
 
-                pub fn fromWire(self: *const Instance, wire: u32) *const anyopaque {
+                pub fn fromWire(self: *const Instance, wire: u32) Wire {
                     return switch (self.kind) {
                         .void => void_wire,
                         .bool => if (wire != 0)
@@ -68,7 +70,7 @@ const Emscripten = struct {
                     };
                 }
 
-                pub fn toWire(self: *const Instance, val: *const anyopaque) u32 {
+                pub fn toWire(self: *const Instance, val: Wire) u32 {
                     return switch (self.kind) {
                         .void => 0,
                         .bool => if (@as(*const bool, @ptrCast(@alignCast(val))).*)
@@ -164,8 +166,10 @@ const Emscripten = struct {
     };
 };
 
-fn MethodImpl(comptime Return: type) type {
-    return *const fn (physics: *HavokPhysics, invoker_context_index: u8, ...) callconv(.c) Return;
+const MethodImpl = *const fn (physics: *HavokPhysics, invoker_context_index: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Wire;
+
+fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+    return @ptrFromInt(0); // Undefined
 }
 
 fn ExternalizeTuple(comptime Tuple: type) type {
@@ -192,14 +196,6 @@ fn ExternalizeTuple(comptime Tuple: type) type {
     }
 }
 
-fn noopImpl(comptime Return: type) MethodImpl(Return) {
-    comptime return struct {
-        fn impl(_: *HavokPhysics, _: u8, ...) callconv(.c) Return {
-            return mem.zeroes(Return);
-        }
-    }.impl;
-}
-
 /// Basic free destructor for pointer.
 fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
     _ = physics.callExported("free", .{ptr}) catch unreachable;
@@ -213,14 +209,14 @@ const QSTransform = struct { Vector3, Quaternion, Vector3 };
 const Transform = struct { Vector3, Rotation };
 const AABB = struct { Vector3, Vector3 };
 
-const BodyId = ExternalizeTuple(struct { c_longlong });
-const ShapeId = ExternalizeTuple(struct { c_longlong });
-const ConstraintId = ExternalizeTuple(struct { c_longlong });
-const WorldId = ExternalizeTuple(struct { c_longlong });
-const CollectorId = ExternalizeTuple(struct { c_longlong });
-const DebugGeometryId = ExternalizeTuple(struct { c_longlong });
+const BodyId = struct { c_longlong };
+const ShapeId = struct { c_longlong };
+const ConstraintId = struct { c_longlong };
+const WorldId = struct { c_longlong };
+const CollectorId = struct { c_longlong };
+const DebugGeometryId = struct { c_longlong };
 
-const ResultStatus = enum(c_int) {
+const Result = enum(c_int) {
     ok,
     fail,
     invalid_handle,
@@ -228,128 +224,263 @@ const ResultStatus = enum(c_int) {
     not_implemented,
 };
 
+const MaterialCombine = enum(c_int) {
+    geometric_mean,
+    minimum,
+    maximum,
+    artihemic_mean,
+    multiply,
+};
+
+const Material = struct {
+    /// Static friction.
+    f64,
+    /// Dynamic friction.
+    f64,
+    /// Restitution.
+    f64,
+    /// Friction combine mode.
+    MaterialCombine,
+    /// Restitution combine mode.
+    MaterialCombine,
+};
+
+const FilterInfo = struct {
+    /// Membership mask.
+    f64,
+    /// Collision mask.
+    f64,
+};
+
 fn ReturnTypeOf(comptime @"fn": anytype) type {
     return @typeInfo(@TypeOf(@"fn")).@"fn".return_type.?;
+}
+
+inline fn castWire(comptime T: type, wire: Emscripten.Bind.Type.Instance.Wire) T {
+    return @as(*allowzero const T, @ptrCast(@alignCast(wire))).*;
+}
+
+/// You must get function_index from (physics.embind_invoker_function_indices).
+fn replaceMethodImpl(
+    function_index: usize,
+    function: MethodImpl,
+) void {
+    switch (function_index) {
+        cached_function_indices.getDefinitely("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateCapsule") => Shape.create_capsule_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateCylinder") => Shape.create_cylinder_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateBox") => Shape.create_box_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull") => Shape.create_convex_hull_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateMesh") => Shape.create_mesh_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateHeightField") => Shape.create_height_field_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo") => Shape.set_filter_info_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo") => Shape.get_filter_info_impl = function,
+
+        else => undefined,
+    }
 }
 
 pub const Shape = struct {
     physics: *HavokPhysics,
 
-    const CreaterReturnType = struct { ResultStatus, ShapeId };
+    const CreaterReturn = struct { Result, ShapeId };
 
-    pub fn createSphere(self: *@This(), center: Vector3, radius: f64) CreaterReturnType {
-        return create_sphere_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateSphere"), &center, &radius);
+    /// Creates geometry representing a sphere.
+    pub inline fn createSphere(self: *const @This(), center: Vector3, radius: f64) CreaterReturn {
+        return castWire(CreaterReturn, create_sphere_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"), &center, &radius));
     }
 
-    pub fn createCapsule(self: *@This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturnType {
-        return create_capsule_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCapsule"), &point_a, &point_b, &radius);
+    /// Creates a geometry representing a capsule.
+    pub inline fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
+        return castWire(CreaterReturn, create_capsule_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"), &point_a, &point_b, &radius));
     }
 
-    pub fn createCylinder(self: *@This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturnType {
-        return create_cylinder_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateCylinder"), &point_a, &point_b, &radius);
+    /// Creates a geometry representing a cylinder.
+    pub inline fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
+        return castWire(CreaterReturn, create_cylinder_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"), &point_a, &point_b, &radius));
     }
 
-    pub fn createBox(self: *@This(), center: Vector3, rotation: Quaternion, extents: Vector3) CreaterReturnType {
-        return create_box_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateBox"), &center, &rotation, &extents);
+    /// Creates a geometry representing a box.
+    pub inline fn createBox(
+        self: *const @This(),
+        /// Position of the box center (in shape space).
+        center: Vector3,
+        /// Orientation of the box (in shape space).
+        rotation: Quaternion,
+        /// Total size of the box.
+        extents: Vector3,
+    ) CreaterReturn {
+        return castWire(CreaterReturn, create_box_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"), &center, &rotation, &extents));
     }
 
-    pub fn createConvexHull(self: *@This(), vertices: u32, num_vertices: usize) CreaterReturnType {
-        return create_convex_hull_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateConvexHull"), &vertices, &num_vertices);
+    /// Creates a geometry which encloses all the `vertices`.
+    pub inline fn createConvexHull(
+        self: *const @This(),
+        /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
+        vertices: u32,
+        num_vertices: usize,
+    ) CreaterReturn {
+        return castWire(CreaterReturn, create_convex_hull_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"), &vertices, &num_vertices));
     }
 
-    pub fn createMesh(self: *@This(), vertices: u32, num_vertices: usize, triangles: u32, num_triangles: usize) CreaterReturnType {
-        return create_mesh_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateMesh"), &vertices, &num_vertices, &triangles, &num_triangles);
+    /// Creates a geometry representing the surface of a mesh.
+    pub inline fn createMesh(
+        self: *const @This(),
+        /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
+        vertices: u32,
+        num_vertices: usize,
+        /// Should be triples of 32-bit integers which index into `vertices`.
+        triangles: u32,
+        num_triangles: usize,
+    ) CreaterReturn {
+        return castWire(CreaterReturn, create_mesh_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"), &vertices, &num_vertices, &triangles, &num_triangles));
     }
 
-    pub fn createHeightField(self: *@This(), num_x_samples: usize, num_z_samples: usize, scale: Vector3, heights: u32) CreaterReturnType {
-        return create_height_field_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateHeightField"), &num_x_samples, &num_z_samples, &scale, &heights);
+    /// Creates a geometry representing a height map.
+    pub inline fn createHeightField(
+        self: *const @This(),
+        num_x_samples: usize,
+        num_z_samples: usize,
+        /// X and Z components should be converted from integer space to shape space.
+        /// Y supplies a scaling factor for the height.
+        scale: Vector3,
+        /// Should be a buffer of floats, of size (num_x_samples * num_z_samples), describing heights at (x, z) of
+        /// [(0,0), (1,0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
+        heights: u32,
+    ) CreaterReturn {
+        return castWire(CreaterReturn, create_height_field_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"), &num_x_samples, &num_z_samples, &scale, &heights));
     }
 
-    pub fn createContainer(self: *@This()) CreaterReturnType {
-        return create_container_impl(self.physics, comptime cached_function_indices.get("HP_Shape_CreateContainer"));
+    pub var create_sphere_impl = &noopImpl;
+    pub var create_capsule_impl = &noopImpl;
+    pub var create_cylinder_impl = &noopImpl;
+    pub var create_box_impl = &noopImpl;
+    pub var create_convex_hull_impl = &noopImpl;
+    pub var create_mesh_impl = &noopImpl;
+    pub var create_height_field_impl = &noopImpl;
+
+    const GetFilterInfoReturn = struct { Result, FilterInfo };
+
+    /// Sets the collision info for the shape to the information in `filter_info`.
+    /// This can prevent collisions between shapes and queries, depending on how you have configured the filter.
+    pub inline fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
+        return castWire(Result, set_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo")), &id, &filter_info));
     }
 
-    pub var create_sphere_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_capsule_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_cylinder_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_box_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_convex_hull_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_mesh_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_height_field_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
-    pub var create_container_impl = noopImpl(ExternalizeTuple(CreaterReturnType));
+    /// Get the collision filter info for a shape.
+    pub inline fn getFilterInfo(self: *const @This(), id: ShapeId) GetFilterInfoReturn {
+        return castWire(GetFilterInfoReturn, get_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")), &id));
+    }
 
-    pub fn release(self: *@This(), a: u32) !u32 {
+    pub var set_filter_info_impl = &noopImpl;
+    pub var get_filter_info_impl = &noopImpl;
+
+    const GetMaterialReturn = struct { Result, Material };
+
+    /// Sets the material of the shape to the provided material.
+    pub inline fn setMaterial(self: *const @This(), id: ShapeId, material: Material) Result {
+        return castWire(Result, set_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetMaterial")), &id, &material));
+    }
+
+    /// Get the material associated with the shape.
+    pub inline fn getMaterial(self: *const @This(), id: ShapeId) GetMaterialReturn {
+        return castWire(GetMaterialReturn, get_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")), &id));
+    }
+
+    pub var set_material_impl = &noopImpl;
+    pub var get_material_impl = &noopImpl;
+
+    const GetDensityReturn = struct { Result, f64 };
+
+    /// Set the density of the shape. Used when calling `buildMassProperties`.
+    pub inline fn setDensity(self: *const @This(), id: ShapeId, density: f64) Result {
+        return castWire(Result, set_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")), &id, &density));
+    }
+
+    /// Get the density of the shape.
+    pub inline fn getDensity(self: *const @This(), id: ShapeId) GetDensityReturn {
+        return castWire(GetDensityReturn, get_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")), &id));
+    }
+
+    pub var set_density_impl = &noopImpl;
+    pub var get_density_impl = &noopImpl;
+
+    /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
+    pub inline fn createContainer(self: *const @This()) CreaterReturn {
+        return castWire(CreaterReturn, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
+    }
+
+    /// Adds the `child_id` to the container `container` at the transform `container_from_child`.
+    pub inline fn addChild(self: *const @This(), container: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
+        return castWire(Result, add_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")), &container, &child_id, &container_from_child));
+    }
+
+    /// Removes the child at index `child_index` inside `container`.
+    pub inline fn removeChild(self: *const @This(), container: ShapeId, child_index: u32) Result {
+        return castWire(Result, remove_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")), &container, &child_index));
+    }
+
+    const GetNumChildrenReturn = struct { Result, usize };
+
+    /// Get the number of children of the container.
+    pub inline fn getNumChildren(self: *const @This(), container: ShapeId) GetNumChildrenReturn {
+        return castWire(GetNumChildrenReturn, get_num_children_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")), &container));
+    }
+
+    const GetChildShapeReturn = struct { Result, ShapeId };
+
+    /// Returns the shape id of the child shape at index `child_index` in the container.
+    pub inline fn getChildShape(self: *const @This(), container: ShapeId, child_index: u32) GetChildShapeReturn {
+        return castWire(GetChildShapeReturn, get_child_shape_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")), &container, &child_index));
+    }
+
+    pub var create_container_impl = &noopImpl;
+
+    pub var add_child_impl = &noopImpl;
+    pub var remove_child_impl = &noopImpl;
+
+    pub var get_num_children_impl = &noopImpl;
+
+    pub var get_child_shape_impl = &noopImpl;
+
+    pub fn release(self: *const @This(), a: u32) !u32 {
         return self.physics.callExported("HP_Shape_Release", .{a});
     }
 
-    pub fn getType(self: *@This(), a: u32, b: u32) !u32 {
+    pub fn getType(self: *const @This(), a: u32, b: u32) !u32 {
         return self.physics.callExported("HP_Shape_GetType", .{ a, b });
     }
 
-    pub fn addChild(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_Shape_AddChild", .{ a, b, c });
-    }
-    pub fn removeChild(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_RemoveChild", .{ a, b });
-    }
-
-    pub fn getNumChildren(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetNumChildren", .{ a, b });
-    }
-
-    pub fn getChildShape(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetChildShape", .{ a, b, c });
-    }
-
-    pub fn setChildQSTransform(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+    pub fn setChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
         return self.physics.callExported("HP_Shape_SetChildQSTransform", .{ a, b, c });
     }
-    pub fn getChildQSTransform(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+    pub fn getChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
         return self.physics.callExported("HP_Shape_GetChildQSTransform", .{ a, b, c });
     }
 
-    pub fn setFilterInfo(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_SetFilterInfo", .{ a, b });
-    }
-    pub fn getFilterInfo(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetFilterInfo", .{ a, b });
-    }
-
-    pub fn setMaterial(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_SetMaterial", .{ a, b });
-    }
-    pub fn getMaterial(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetMaterial", .{ a, b });
-    }
-
-    pub fn setDensity(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_SetDensity", .{ a, b });
-    }
-    pub fn getDensity(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_Shape_GetDensity", .{ a, b });
-    }
-
-    pub fn getBoundingBox(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+    pub fn getBoundingBox(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
         return self.physics.callExported("HP_Shape_GetBoundingBox", .{ a, b, c });
     }
 
-    pub fn castRay(self: *@This(), a: u32, b: u32, c: u32, d: u32, e: u32) !u32 {
+    pub fn castRay(self: *const @This(), a: u32, b: u32, c: u32, d: u32, e: u32) !u32 {
         return self.physics.callExported("HP_Shape_CastRay", .{ a, b, c, d, e });
     }
 
-    pub fn buildMassProperties(self: *@This(), a: u32, b: u32) !u32 {
+    pub fn buildMassProperties(self: *const @This(), a: u32, b: u32) !u32 {
         return self.physics.callExported("HP_Shape_BuildMassProperties", .{ a, b });
     }
 
-    pub fn setTrigger(self: *@This(), a: u32, b: u32) !u32 {
+    pub fn setTrigger(self: *const @This(), a: u32, b: u32) !u32 {
         return self.physics.callExported("HP_Shape_SetTrigger", .{ a, b });
     }
 
-    pub fn pathIteratorGetNext(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+    pub fn pathIteratorGetNext(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
         return self.physics.callExported("HP_Shape_PathIterator_GetNext", .{ a, b, c });
     }
 
-    pub fn createDebugDisplayGeometry(self: *@This(), a: u32, b: u32) !u32 {
+    pub fn createDebugDisplayGeometry(self: *const @This(), a: u32, b: u32) !u32 {
         return self.physics.callExported("HP_Shape_CreateDebugDisplayGeometry", .{ a, b });
     }
 };
@@ -1062,37 +1193,37 @@ fn createMethodSignature(
     return meta.stringToEnum(MethodSignature, buffer[0..len]) orelse error.InvalidSignature;
 }
 
-fn createMethodImplInner(comptime Return: type, signature: MethodSignature) MethodImpl(Return) {
+fn createMethodImplInner(signature: MethodSignature) MethodImpl {
     return switch (signature) {
         .ftf => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Return {
+            fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const return_wired = physics.call(context.invoker, .{context.function}) catch unreachable;
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftfn => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
                 const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .fffn => @ptrCast(&struct { // We here want to constantly change Return to void, but it may be broken in later changes
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
                 _ = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
 
-                return mem.zeroes(Return);
+                return @ptrFromInt(0); // Undefined
             }
         }.impl),
         .ftfnnnn => @ptrCast(&struct {
@@ -1103,7 +1234,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_1: *const anyopaque,
                 arg_2: *const anyopaque,
                 arg_3: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1119,7 +1250,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                     arg_3_wired,
                 }) catch unreachable;
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftfnn => @ptrCast(&struct {
@@ -1128,7 +1259,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 context_index: u8,
                 arg_0: *const anyopaque,
                 arg_1: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1136,7 +1267,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
 
                 const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftftt => @ptrCast(&struct {
@@ -1145,7 +1276,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 context_index: u8,
                 arg_0: *const anyopaque,
                 arg_1: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1171,11 +1302,11 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_1_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftft => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Return {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1191,7 +1322,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_0_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftftn => @ptrCast(&struct {
@@ -1200,7 +1331,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 context_index: u8,
                 arg_0: *const anyopaque,
                 arg_1: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1217,7 +1348,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_0_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftftnn => @ptrCast(&struct {
@@ -1227,7 +1358,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_0: *const anyopaque,
                 arg_1: *const anyopaque,
                 arg_2: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1245,7 +1376,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_0_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftfttn => @ptrCast(&struct {
@@ -1255,7 +1386,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_0: *const anyopaque,
                 arg_1: *const anyopaque,
                 arg_2: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1282,7 +1413,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_1_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftfttt => @ptrCast(&struct {
@@ -1292,7 +1423,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_0: *const anyopaque,
                 arg_1: *const anyopaque,
                 arg_2: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1328,7 +1459,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_2_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftfnntn => @ptrCast(&struct {
@@ -1339,7 +1470,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_1: *const anyopaque,
                 arg_2: *const anyopaque,
                 arg_3: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1364,7 +1495,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_2_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
         .ftftttt => @ptrCast(&struct {
@@ -1375,7 +1506,7 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                 arg_1: *const anyopaque,
                 arg_2: *const anyopaque,
                 arg_3: *const anyopaque,
-            ) callconv(.c) Return {
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1427,23 +1558,22 @@ fn createMethodImplInner(comptime Return: type, signature: MethodSignature) Meth
                         destructor(physics, arg_3_wired);
                 }
 
-                return @as(*const Return, @ptrCast(@alignCast(context.return_type_instance.fromWire(return_wired)))).*;
+                return context.return_type_instance.fromWire(return_wired);
             }
         }.impl),
     };
 }
 
-/// type_instances must not be deinited after this function called.
-/// type_instances's parent array list deinited when arena's deinit called.
 fn createMethodImpl(
     self: *HavokPhysics,
-    comptime Return: type,
-    name: []u8,
+    /// Must not be deinited after this function called.
+    /// Parent's array list deinited when arena's deinit called.
     type_instances: []?*const Emscripten.Bind.Type.Instance,
     invoker: wamr.wasm_function_inst_t,
+    function_index: usize,
     function: u32,
     is_async: bool,
-) !MethodImpl(Return) {
+) !MethodImpl {
     const allocator = self.embind_allocator;
 
     const type_instances_len = type_instances.len;
@@ -1476,10 +1606,9 @@ fn createMethodImpl(
                     context.destructors[i] = .{ type_instance.is_destructor_wasm, destructor };
             };
 
-    if (self.embind_invoker_function_indices.get(name)) |invoker_index|
-        self.embind_invoker_contexts[invoker_index] = context;
+    self.embind_invoker_contexts[function_index] = context;
 
-    return createMethodImplInner(Return, try createMethodSignature(type_instances, returns, is_async));
+    return createMethodImplInner(try createMethodSignature(type_instances, returns, is_async));
 }
 
 fn embind_register_function(
@@ -1488,7 +1617,7 @@ fn embind_register_function(
     dependent_type_ids_count: i32,
     dependent_type_ids_ptr: i32,
     _: i32,
-    invoker_idx: i32,
+    invoker_index: i32,
     function: i32,
     is_async: i32,
     _: i32,
@@ -1522,7 +1651,7 @@ fn embind_register_function(
 
         register_context.* = .{
             .name = name,
-            .invoker = physics.getFunctionIndirect(@intCast(invoker_idx)) catch {
+            .invoker = physics.getFunctionIndirect(@intCast(invoker_index)) catch {
                 allocator.free(name);
 
                 allocator.destroy(register_context);
@@ -1570,24 +1699,27 @@ fn embind_register_function(
                         return &.{};
                     };
 
-                    const method_impl = physics_inner.createMethodImpl(
-                        struct {},
-                        register_context_inner.name,
+                    const function_index = physics_inner.embind_invoker_function_indices.get(register_context_inner.name) orelse {
+                        invoker_type_instances.deinit();
+
+                        return &.{};
+                    };
+
+                    replaceMethodImpl(function_index, physics_inner.createMethodImpl(
                         invoker_type_instances.toOwnedSlice() catch {
                             invoker_type_instances.deinit();
 
                             return &.{};
                         },
                         register_context_inner.invoker,
+                        function_index,
                         register_context_inner.function,
                         register_context_inner.is_async,
                     ) catch {
                         invoker_type_instances.deinit();
 
                         return &.{};
-                    };
-
-                    _ = method_impl;
+                    });
 
                     return &.{};
                 }
@@ -1603,9 +1735,9 @@ fn embind_register_value_array(
     type_id: Emscripten.Bind.Type.Id,
     name_ptr: i32,
     _: i32,
-    constructor_idx: i32,
+    constructor_index: i32,
     _: i32,
-    destructor_idx: i32,
+    destructor_index: i32,
 ) callconv(.c) void {
     if (getPhysics(exec_env)) |physics| {
         const name = readLatin1String(physics, @intCast(name_ptr)) catch return;
@@ -1615,12 +1747,12 @@ fn embind_register_value_array(
         physics.embind_tuple_registry.put(type_id, .{
             .name = name,
 
-            .constructor = physics.getFunctionIndirect(@intCast(constructor_idx)) catch {
+            .constructor = physics.getFunctionIndirect(@intCast(constructor_index)) catch {
                 allocator.free(name);
 
                 return;
             },
-            .destructor = physics.getFunctionIndirect(@intCast(destructor_idx)) catch {
+            .destructor = physics.getFunctionIndirect(@intCast(destructor_index)) catch {
                 allocator.free(name);
 
                 return;
@@ -1636,22 +1768,22 @@ fn embind_register_value_array_element(
     type_id: Emscripten.Bind.Type.Id,
     getter_return_type: i32,
     _: i32,
-    getter_idx: i32,
+    getter_index: i32,
     getter_context: i32,
     setter_arg_type: i32,
     _: i32,
-    setter_idx: i32,
+    setter_index: i32,
     setter_context: i32,
 ) callconv(.c) void {
     if (getPhysics(exec_env)) |physics|
         if (physics.embind_tuple_registry.getPtr(type_id)) |tuple|
             tuple.elements.append(.{
                 .getter_return_type = getter_return_type,
-                .getter = physics.getFunctionIndirect(@intCast(getter_idx)) catch return,
+                .getter = physics.getFunctionIndirect(@intCast(getter_index)) catch return,
                 .getter_context = getter_context,
 
                 .setter_arg_type = setter_arg_type,
-                .setter = physics.getFunctionIndirect(@intCast(setter_idx)) catch return,
+                .setter = physics.getFunctionIndirect(@intCast(setter_index)) catch return,
                 .setter_context = setter_context,
             }) catch return;
 }
@@ -2287,17 +2419,17 @@ pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: anyt
     return self.call(function, args);
 }
 
-pub fn callIndirect(self: *HavokPhysics, idx: u32, args: anytype) !u32 {
-    const function = try self.getFunctionIndirect(idx);
+pub fn callIndirect(self: *HavokPhysics, index: u32, args: anytype) !u32 {
+    const function = try self.getFunctionIndirect(index);
 
     return self.call(function, args);
 }
 
-pub fn getFunctionIndirect(self: *HavokPhysics, idx: u32) !wamr.wasm_function_inst_t {
-    return self.cached_indirect_functions.get(idx) orelse blk: {
-        const function = wamr.wasm_table_get_func_inst(self.module_inst, &self.table_inst, idx);
+pub fn getFunctionIndirect(self: *HavokPhysics, index: u32) !wamr.wasm_function_inst_t {
+    return self.cached_indirect_functions.get(index) orelse blk: {
+        const function = wamr.wasm_table_get_func_inst(self.module_inst, &self.table_inst, index);
 
-        try self.cached_indirect_functions.put(idx, function);
+        try self.cached_indirect_functions.put(index, function);
 
         break :blk function;
     };

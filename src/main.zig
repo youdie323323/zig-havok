@@ -19,7 +19,7 @@ pub fn main() !void {
 
     const world = try physics.world.create(0);
 
-    _ = HavokPhysics.Shape.createBox;
+    _ = physics.shape.getFilterInfo(.{1});
 
     log.info("World created at: {}", .{world});
 }

@@ -17,11 +17,7 @@ pub fn main() !void {
         return;
     };
 
-    const world = try physics.world.create(0);
-
-    _ = physics.shape.getFilterInfo(.{1});
-
-    log.info("World created at: {}", .{world});
+    _ = physics.shape.createSphere(.{ 1, 1, 1 }, 10);
 }
 
 const std = @import("std");

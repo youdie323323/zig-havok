@@ -8,7 +8,7 @@ const Emscripten = struct {
             pub const Kind = enum {
                 void,
                 bool,
-                int,
+                integer,
                 float,
                 bigint,
                 std_string,
@@ -23,7 +23,16 @@ const Emscripten = struct {
             pub const Instance = struct {
                 pub const Initializer = *const fn (...) callconv(.c) void;
 
-                pub const Wire = *allowzero const anyopaque;
+                pub const Wire = struct {
+                    it: u64,
+                    is_multiple: bool = false,
+
+                    fn u32ize(self: Wire) u32 {
+                        return @intCast(self.it);
+                    }
+                };
+
+                pub const Opaque = *allowzero const anyopaque;
 
                 name: []const u8,
                 kind: Kind,
@@ -34,7 +43,7 @@ const Emscripten = struct {
 
                 size: ?u32 = null,
 
-                is_signed: ?bool = null,
+                integer_bitshift: ?u5 = null,
 
                 true_value: ?u32 = null,
                 false_value: ?u32 = null,
@@ -50,34 +59,57 @@ const Emscripten = struct {
                     .kind = .emval,
                 };
 
-                const void_wire_inner = 0;
-                const void_wire: *const anyopaque = @ptrCast(&void_wire_inner);
+                const void_opaque_inner = 0;
+                const void_opaque: Opaque = @ptrCast(&void_opaque_inner);
 
-                const false_wire_inner = false;
-                const false_wire: *const anyopaque = @ptrCast(&false_wire_inner);
+                const false_opaque_inner = false;
+                const false_opaque: Opaque = @ptrCast(&false_opaque_inner);
 
-                const true_wire_inner = true;
-                const true_wire: *const anyopaque = @ptrCast(&true_wire_inner);
+                const true_opaque_inner = true;
+                const true_opaque: Opaque = @ptrCast(&true_opaque_inner);
 
-                pub fn fromWire(self: *const Instance, wire: u32) Wire {
+                fn opacify(arg: anytype) Opaque {
+                    return @constCast(&arg);
+                }
+
+                pub fn fromWire(self: *const Instance, wire: Wire) Opaque {
                     return switch (self.kind) {
-                        .void => void_wire,
-                        .bool => if (wire != 0)
-                            true_wire
+                        .void => void_opaque,
+                        .bool => if (wire.it != 0)
+                            true_opaque
                         else
-                            false_wire,
-                        else => unreachable,
+                            false_opaque,
+                        .integer => opacify(
+                            if (self.integer_bitshift) |bitshift|
+                                (wire.it << bitshift) >> bitshift
+                            else
+                                wire.it,
+                        ),
+                        .float => opacify(wire.it),
+                        else => {
+                            log.info("{any}", .{self.*});
+
+                            unreachable;
+                        },
                     };
                 }
 
-                pub fn toWire(self: *const Instance, val: Wire) u32 {
+                pub fn toWire(self: *const Instance, @"opaque": Opaque) Wire {
                     return switch (self.kind) {
-                        .void => 0,
-                        .bool => if (@as(*const bool, @ptrCast(@alignCast(val))).*)
-                            self.true_value.?
-                        else
-                            self.false_value.?,
-                        else => unreachable,
+                        .void => .{ .it = 0 },
+                        .bool => .{ .it = @intCast(
+                            if (castOpaque(bool, @"opaque"))
+                                self.true_value.?
+                            else
+                                self.false_value.?,
+                        ) },
+                        .integer => .{ .it = castOpaque(u32, @"opaque") },
+                        .float => .{ .it = @bitCast(castOpaque(f64, @"opaque")), .is_multiple = true },
+                        else => {
+                            log.info("{any}", .{self.*});
+
+                            unreachable;
+                        },
                     };
                 }
             };
@@ -139,7 +171,7 @@ const Emscripten = struct {
 
             invoker: wamr.wasm_function_inst_t,
 
-            function: u32,
+            function_wire: Type.Instance.Wire,
 
             return_type_instance: *const Type.Instance,
 
@@ -166,9 +198,9 @@ const Emscripten = struct {
     };
 };
 
-const MethodImpl = *const fn (physics: *HavokPhysics, invoker_context_index: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Wire;
+const MethodImpl = *const fn (physics: *HavokPhysics, invoker_context_index: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque;
 
-fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
     return @ptrFromInt(0); // Undefined
 }
 
@@ -198,7 +230,7 @@ fn ExternalizeTuple(comptime Tuple: type) type {
 
 /// Basic free destructor for pointer.
 fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
-    _ = physics.callExported("free", .{ptr}) catch unreachable;
+    _ = physics.callExported("free", &.{.{ .it = @intCast(ptr) }}) catch unreachable;
 }
 
 const Vector3 = @Vector(3, f64);
@@ -239,7 +271,7 @@ const MassProperties = struct {
     f64,
     /// Inertia for mass of 1.
     Vector3,
-    /// Inertia Orientation.
+    /// Inertia orientation.
     Quaternion,
 };
 
@@ -263,8 +295,8 @@ const FilterInfo = struct {
     f64,
 };
 
-inline fn castWire(comptime T: type, wire: Emscripten.Bind.Type.Instance.Wire) T {
-    return @as(*allowzero const T, @ptrCast(@alignCast(wire))).*;
+inline fn castOpaque(comptime T: type, @"opaque": Emscripten.Bind.Type.Instance.Opaque) T {
+    return @as(*allowzero const T, @ptrCast(@alignCast(@"opaque"))).*;
 }
 
 /// You must get function_index from (physics.embind_invoker_function_indices).
@@ -330,17 +362,17 @@ pub const Shape = struct {
 
     /// Creates geometry representing a sphere.
     pub inline fn createSphere(self: *const @This(), center: Vector3, radius: f64) CreaterReturn {
-        return castWire(CreaterReturn, create_sphere_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"), &center, &radius));
+        return castOpaque(CreaterReturn, create_sphere_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"), &center, &radius));
     }
 
     /// Creates a geometry representing a capsule.
     pub inline fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
-        return castWire(CreaterReturn, create_capsule_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"), &point_a, &point_b, &radius));
+        return castOpaque(CreaterReturn, create_capsule_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"), &point_a, &point_b, &radius));
     }
 
     /// Creates a geometry representing a cylinder.
     pub inline fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
-        return castWire(CreaterReturn, create_cylinder_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"), &point_a, &point_b, &radius));
+        return castOpaque(CreaterReturn, create_cylinder_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"), &point_a, &point_b, &radius));
     }
 
     /// Creates a geometry representing a box.
@@ -353,7 +385,7 @@ pub const Shape = struct {
         /// Total size of the box.
         extents: Vector3,
     ) CreaterReturn {
-        return castWire(CreaterReturn, create_box_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"), &center, &rotation, &extents));
+        return castOpaque(CreaterReturn, create_box_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"), &center, &rotation, &extents));
     }
 
     /// Creates a geometry which encloses all the `vertices`.
@@ -363,7 +395,7 @@ pub const Shape = struct {
         vertices: u32,
         num_vertices: usize,
     ) CreaterReturn {
-        return castWire(CreaterReturn, create_convex_hull_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"), &vertices, &num_vertices));
+        return castOpaque(CreaterReturn, create_convex_hull_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"), &vertices, &num_vertices));
     }
 
     /// Creates a geometry representing the surface of a mesh.
@@ -376,7 +408,7 @@ pub const Shape = struct {
         triangles: u32,
         num_triangles: usize,
     ) CreaterReturn {
-        return castWire(CreaterReturn, create_mesh_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"), &vertices, &num_vertices, &triangles, &num_triangles));
+        return castOpaque(CreaterReturn, create_mesh_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"), &vertices, &num_vertices, &triangles, &num_triangles));
     }
 
     /// Creates a geometry representing a height map.
@@ -388,10 +420,10 @@ pub const Shape = struct {
         /// Y supplies a scaling factor for the height.
         scale: Vector3,
         /// Should be a buffer of floats, of size (num_x_samples * num_z_samples), describing heights at (x, z) of
-        /// [(0,0), (1,0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
+        /// [(0, 0), (1, 0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
         heights: u32,
     ) CreaterReturn {
-        return castWire(CreaterReturn, create_height_field_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"), &num_x_samples, &num_z_samples, &scale, &heights));
+        return castOpaque(CreaterReturn, create_height_field_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"), &num_x_samples, &num_z_samples, &scale, &heights));
     }
 
     pub var create_sphere_impl = &noopImpl;
@@ -407,12 +439,12 @@ pub const Shape = struct {
     /// Sets the collision info for the shape to the information in `filter_info`.
     /// This can prevent collisions between shapes and queries, depending on how you have configured the filter.
     pub inline fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
-        return castWire(Result, set_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo")), &id, &filter_info));
+        return castOpaque(Result, set_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo")), &id, &filter_info));
     }
 
     /// Get the collision filter info for a shape.
     pub inline fn getFilterInfo(self: *const @This(), id: ShapeId) GetFilterInfoReturn {
-        return castWire(GetFilterInfoReturn, get_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")), &id));
+        return castOpaque(GetFilterInfoReturn, get_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")), &id));
     }
 
     pub var set_filter_info_impl = &noopImpl;
@@ -422,12 +454,12 @@ pub const Shape = struct {
 
     /// Sets the material of the shape to the provided material.
     pub inline fn setMaterial(self: *const @This(), id: ShapeId, material: Material) Result {
-        return castWire(Result, set_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetMaterial")), &id, &material));
+        return castOpaque(Result, set_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetMaterial")), &id, &material));
     }
 
     /// Get the material associated with the shape.
     pub inline fn getMaterial(self: *const @This(), id: ShapeId) GetMaterialReturn {
-        return castWire(GetMaterialReturn, get_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")), &id));
+        return castOpaque(GetMaterialReturn, get_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")), &id));
     }
 
     pub var set_material_impl = &noopImpl;
@@ -437,12 +469,12 @@ pub const Shape = struct {
 
     /// Set the density of the shape. Used when calling `buildMassProperties`.
     pub inline fn setDensity(self: *const @This(), id: ShapeId, density: f64) Result {
-        return castWire(Result, set_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")), &id, &density));
+        return castOpaque(Result, set_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")), &id, &density));
     }
 
     /// Get the density of the shape.
     pub inline fn getDensity(self: *const @This(), id: ShapeId) GetDensityReturn {
-        return castWire(GetDensityReturn, get_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")), &id));
+        return castOpaque(GetDensityReturn, get_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")), &id));
     }
 
     pub var set_density_impl = &noopImpl;
@@ -450,31 +482,31 @@ pub const Shape = struct {
 
     /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
     pub inline fn createContainer(self: *const @This()) CreaterReturn {
-        return castWire(CreaterReturn, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
+        return castOpaque(CreaterReturn, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
     }
 
     /// Adds the `child_id` to the container `container` at the transform `container_from_child`.
     pub inline fn addChild(self: *const @This(), container: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
-        return castWire(Result, add_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")), &container, &child_id, &container_from_child));
+        return castOpaque(Result, add_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")), &container, &child_id, &container_from_child));
     }
 
     /// Removes the child at index `child_index` inside `container`.
     pub inline fn removeChild(self: *const @This(), container: ShapeId, child_index: u32) Result {
-        return castWire(Result, remove_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")), &container, &child_index));
+        return castOpaque(Result, remove_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")), &container, &child_index));
     }
 
     const GetNumChildrenReturn = struct { Result, usize };
 
     /// Get the number of children of the container.
     pub inline fn getNumChildren(self: *const @This(), container: ShapeId) GetNumChildrenReturn {
-        return castWire(GetNumChildrenReturn, get_num_children_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")), &container));
+        return castOpaque(GetNumChildrenReturn, get_num_children_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")), &container));
     }
 
     const GetChildShapeReturn = struct { Result, ShapeId };
 
     /// Returns the shape id of the child shape at index `child_index` in the container.
     pub inline fn getChildShape(self: *const @This(), container: ShapeId, child_index: u32) GetChildShapeReturn {
-        return castWire(GetChildShapeReturn, get_child_shape_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")), &container, &child_index));
+        return castOpaque(GetChildShapeReturn, get_child_shape_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")), &container, &child_index));
     }
 
     pub var create_container_impl = &noopImpl;
@@ -490,7 +522,7 @@ pub const Shape = struct {
 
     /// Get the type of the shape.
     pub inline fn getType(self: *const @This(), id: ShapeId) GetTypeReturn {
-        return castWire(GetTypeReturn, get_type_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")), &id));
+        return castOpaque(GetTypeReturn, get_type_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")), &id));
     }
 
     pub var get_type_impl = &noopImpl;
@@ -499,14 +531,14 @@ pub const Shape = struct {
 
     /// Retrieve the axis aligned bounding box of `shape` located at `worldFromShape`.
     pub inline fn getBoundingBox(self: *const @This(), id: ShapeId, worlf_from_shape: QTransform) GetBoundingBoxReturn {
-        return castWire(GetBoundingBoxReturn, get_bounding_box_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox")), &id, &worlf_from_shape));
+        return castOpaque(GetBoundingBoxReturn, get_bounding_box_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox")), &id, &worlf_from_shape));
     }
 
     pub var get_bounding_box_impl = &noopImpl;
 
     /// Release a shape, freeing memory if it is unused.
     pub inline fn release(self: *const @This(), id: ShapeId) Result {
-        return castWire(Result, release_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")), &id));
+        return castOpaque(Result, release_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")), &id));
     }
 
     pub var release_impl = &noopImpl;
@@ -526,7 +558,7 @@ pub const Shape = struct {
 
     /// Calculates the mass properties of the shape.
     pub inline fn buildMassProperties(self: *const @This(), id: ShapeId) BuildMassPropertiesReturn {
-        return castWire(BuildMassPropertiesReturn, build_mass_properties_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties")), &id));
+        return castOpaque(BuildMassPropertiesReturn, build_mass_properties_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties")), &id));
     }
 
     pub var build_mass_properties_impl = &noopImpl;
@@ -535,7 +567,7 @@ pub const Shape = struct {
 
     /// Allows descending a hierarchy of shape containers, advancing `current_item` to the next entry.
     pub inline fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIteratorGetNextReturn {
-        return castWire(PathIteratorGetNextReturn, path_iterator_get_next_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")), &current_item));
+        return castOpaque(PathIteratorGetNextReturn, path_iterator_get_next_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")), &current_item));
     }
 
     pub var path_iterator_get_next_impl = &noopImpl;
@@ -547,7 +579,7 @@ pub const Shape = struct {
     /// Note: Currently, when one of the shapes overlapping a trigger is a mesh shape, one event will be raised per
     /// overlapping triangle. This is subject to change, as it can cause performance issues.
     pub inline fn setTrigger(self: *const @This(), id: ShapeId, is_trigger: bool) Result {
-        return castWire(Result, set_trigger_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetTrigger")), &id, &is_trigger));
+        return castOpaque(Result, set_trigger_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetTrigger")), &id, &is_trigger));
     }
 
     pub var set_trigger_impl = &noopImpl;
@@ -556,7 +588,7 @@ pub const Shape = struct {
 
     /// Generates a visualization of a shape's geometry, suitable for debugging.
     pub inline fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) CreateDebugDisplayGeometryReturn {
-        return castWire(CreateDebugDisplayGeometryReturn, create_debug_display_geometry_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")), &id));
+        return castOpaque(CreateDebugDisplayGeometryReturn, create_debug_display_geometry_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")), &id));
     }
 
     pub var create_debug_display_geometry_impl = &noopImpl;
@@ -1064,12 +1096,11 @@ fn embind_register_integer(
 
         instance.* = .{
             .name = name,
-            .kind = .int,
-
-            .size = @intCast(size),
-
-            .is_signed = min_range != 0,
+            .kind = .integer,
         };
+
+        if (min_range == 0) // You must ensure that the size is (0 <= size <= 4).
+            instance.integer_bitshift = @intCast(32 - size * 8);
 
         physics.registerType(type_id, instance) catch {
             allocator.free(name);
@@ -1273,32 +1304,32 @@ fn createMethodSignature(
 fn createMethodImplInner(signature: MethodSignature) MethodImpl {
     return switch (signature) {
         .ftf => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+            fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
-                const return_wired = physics.call(context.invoker, .{context.function}) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{context.function_wire}) catch unreachable;
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftfn => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired }) catch unreachable;
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .fffn => @ptrCast(&struct { // We here want to constantly change Return to void, but it may be broken in later changes
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
-                _ = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
+                _ = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired }) catch unreachable;
 
                 return @ptrFromInt(0); // Undefined
             }
@@ -1307,11 +1338,11 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-                arg_2: *const anyopaque,
-                arg_3: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+                arg_2: Emscripten.Bind.Type.Instance.Opaque,
+                arg_3: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1319,235 +1350,235 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                 const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
                 const arg_3_wired = context.arg_type_instances[3].toWire(arg_3);
 
-                const return_wired = physics.call(context.invoker, .{
-                    context.function,
+                const return_wire = physics.call(context.invoker, &.{
+                    context.function_wire,
                     arg_0_wired,
                     arg_1_wired,
                     arg_2_wired,
                     arg_3_wired,
                 }) catch unreachable;
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftfnn => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
                 const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired }) catch unreachable;
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftftt => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
                 const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired }) catch unreachable;
 
                 { // Destruct arg_0_wired
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
                 { // Destruct arg_1_wired
                     const is_destructor_wasm, const destructor = context.destructors[1];
 
                     if (is_destructor_wasm)
-                        destructor(arg_1_wired)
+                        destructor(arg_1_wired.u32ize())
                     else
-                        destructor(physics, arg_1_wired);
+                        destructor(physics, arg_1_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftft => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: *const anyopaque) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired }) catch unreachable;
 
                 { // Destruct arg_0_wired
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftftn => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
                 const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired }) catch unreachable;
 
                 { // Destruct arg_0_wired
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftftnn => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-                arg_2: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+                arg_2: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
                 const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
                 const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
 
                 { // Destruct arg_0_wired
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftfttn => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-                arg_2: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+                arg_2: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
                 const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
                 const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
 
                 { // Destruct arg_0_wired
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
                 { // Destruct arg_1_wired
                     const is_destructor_wasm, const destructor = context.destructors[1];
 
                     if (is_destructor_wasm)
-                        destructor(arg_1_wired)
+                        destructor(arg_1_wired.u32ize())
                     else
-                        destructor(physics, arg_1_wired);
+                        destructor(physics, arg_1_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftfttt => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-                arg_2: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+                arg_2: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
                 const arg_1_wired = context.arg_type_instances[1].toWire(arg_1);
                 const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
 
-                const return_wired = physics.call(context.invoker, .{ context.function, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
+                const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
 
                 { // Destruct arg_0_wired
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
                 { // Destruct arg_1_wired
                     const is_destructor_wasm, const destructor = context.destructors[1];
 
                     if (is_destructor_wasm)
-                        destructor(arg_1_wired)
+                        destructor(arg_1_wired.u32ize())
                     else
-                        destructor(physics, arg_1_wired);
+                        destructor(physics, arg_1_wired.u32ize());
                 }
 
                 { // Destruct arg_2_wired
                     const is_destructor_wasm, const destructor = context.destructors[2];
 
                     if (is_destructor_wasm)
-                        destructor(arg_2_wired)
+                        destructor(arg_2_wired.u32ize())
                     else
-                        destructor(physics, arg_2_wired);
+                        destructor(physics, arg_2_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftfnntn => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-                arg_2: *const anyopaque,
-                arg_3: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+                arg_2: Emscripten.Bind.Type.Instance.Opaque,
+                arg_3: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1555,8 +1586,8 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                 const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
                 const arg_3_wired = context.arg_type_instances[3].toWire(arg_3);
 
-                const return_wired = physics.call(context.invoker, .{
-                    context.function,
+                const return_wire = physics.call(context.invoker, &.{
+                    context.function_wire,
                     arg_0_wired,
                     arg_1_wired,
                     arg_2_wired,
@@ -1567,23 +1598,23 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                     const is_destructor_wasm, const destructor = context.destructors[2];
 
                     if (is_destructor_wasm)
-                        destructor(arg_2_wired)
+                        destructor(arg_2_wired.u32ize())
                     else
-                        destructor(physics, arg_2_wired);
+                        destructor(physics, arg_2_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
         .ftftttt => @ptrCast(&struct {
             fn impl(
                 physics: *HavokPhysics,
                 context_index: u8,
-                arg_0: *const anyopaque,
-                arg_1: *const anyopaque,
-                arg_2: *const anyopaque,
-                arg_3: *const anyopaque,
-            ) callconv(.c) Emscripten.Bind.Type.Instance.Wire {
+                arg_0: Emscripten.Bind.Type.Instance.Opaque,
+                arg_1: Emscripten.Bind.Type.Instance.Opaque,
+                arg_2: Emscripten.Bind.Type.Instance.Opaque,
+                arg_3: Emscripten.Bind.Type.Instance.Opaque,
+            ) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0);
@@ -1591,8 +1622,8 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                 const arg_2_wired = context.arg_type_instances[2].toWire(arg_2);
                 const arg_3_wired = context.arg_type_instances[3].toWire(arg_3);
 
-                const return_wired = physics.call(context.invoker, .{
-                    context.function,
+                const return_wire = physics.call(context.invoker, &.{
+                    context.function_wire,
                     arg_0_wired,
                     arg_1_wired,
                     arg_2_wired,
@@ -1603,39 +1634,39 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                     const is_destructor_wasm, const destructor = context.destructors[0];
 
                     if (is_destructor_wasm)
-                        destructor(arg_0_wired)
+                        destructor(arg_0_wired.u32ize())
                     else
-                        destructor(physics, arg_0_wired);
+                        destructor(physics, arg_0_wired.u32ize());
                 }
 
                 { // Destruct arg_1_wired
                     const is_destructor_wasm, const destructor = context.destructors[1];
 
                     if (is_destructor_wasm)
-                        destructor(arg_1_wired)
+                        destructor(arg_1_wired.u32ize())
                     else
-                        destructor(physics, arg_1_wired);
+                        destructor(physics, arg_1_wired.u32ize());
                 }
 
                 { // Destruct arg_2_wired
                     const is_destructor_wasm, const destructor = context.destructors[2];
 
                     if (is_destructor_wasm)
-                        destructor(arg_2_wired)
+                        destructor(arg_2_wired.u32ize())
                     else
-                        destructor(physics, arg_2_wired);
+                        destructor(physics, arg_2_wired.u32ize());
                 }
 
                 { // Destruct arg_3_wired
                     const is_destructor_wasm, const destructor = context.destructors[3];
 
                     if (is_destructor_wasm)
-                        destructor(arg_3_wired)
+                        destructor(arg_3_wired.u32ize())
                     else
-                        destructor(physics, arg_3_wired);
+                        destructor(physics, arg_3_wired.u32ize());
                 }
 
-                return context.return_type_instance.fromWire(return_wired);
+                return context.return_type_instance.fromWire(.{ .it = return_wire });
             }
         }.impl),
     };
@@ -1668,7 +1699,7 @@ fn createMethodImpl(
     context.* = .{
         .invoker = invoker,
 
-        .function = function,
+        .function_wire = .{ .it = function },
 
         .return_type_instance = type_instances[0] orelse return error.MissingReturnType,
     };
@@ -1904,7 +1935,6 @@ fn embind_register_enum(
     type_id: Emscripten.Bind.Type.Id,
     name_ptr: i32,
     size: i32, // 1, 2, 4
-    is_signed: i32,
 ) callconv(.c) void {
     if (getPhysics(exec_env)) |physics| {
         const name = readLatin1String(physics, @intCast(name_ptr)) catch return;
@@ -1918,8 +1948,6 @@ fn embind_register_enum(
             .kind = .@"enum",
 
             .size = @intCast(size),
-
-            .is_signed = is_signed != 0,
         };
 
         physics.registerType(type_id, instance) catch {
@@ -2223,7 +2251,7 @@ pub fn deinit(self: *HavokPhysics) void {
 }
 
 pub fn start(self: *HavokPhysics) !u32 {
-    _ = try self.callExported("__wasm_call_ctors", .{});
+    _ = try self.callExported("__wasm_call_ctors", &.{});
 
     if (wamr.wasm_application_execute_main(self.module_inst, 0, null))
         return wamr.wasm_runtime_get_wasi_exit_code(self.module_inst)
@@ -2457,13 +2485,27 @@ const cached_function_indices: CachedFunctionIndices = blk: {
     break :blk .initComptime(kvs);
 };
 
-pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
-    const args_info = @typeInfo(@TypeOf(args));
+pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+    var argv_len: usize = 0;
 
-    var argv: [args_info.@"struct".fields.len]u32 = undefined;
+    for (args) |arg|
+        argv_len += if (arg.is_multiple) 2 else 1;
 
-    inline for (args_info.@"struct".fields, 0..) |field, i|
-        argv[i] = @intCast(@field(args, field.name));
+    var argv: [32]u32 = undefined;
+
+    if (argv_len > argv.len)
+        return error.TooManyArgs;
+
+    var i: usize = 0;
+
+    for (args) |arg| {
+        argv[i] = @truncate(arg.it);
+
+        if (arg.is_multiple)
+            argv[i + 1] = @truncate(arg.it >> 32);
+
+        i += if (arg.is_multiple) 2 else 1;
+    }
 
     if (!wamr.wasm_runtime_call_wasm(
         self.exec_env,
@@ -2479,7 +2521,7 @@ pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: anyt
         0;
 }
 
-pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: anytype) !u32 {
+pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
     const function_index = comptime cached_function_indices.get(name) orelse
         @compileError(fmt.comptimePrint("uncached function name: {s}", .{name}));
 
@@ -2496,7 +2538,7 @@ pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: anyt
     return self.call(function, args);
 }
 
-pub fn callIndirect(self: *HavokPhysics, index: u32, args: anytype) !u32 {
+pub fn callIndirect(self: *HavokPhysics, index: u32, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
     const function = try self.getFunctionIndirect(index);
 
     return self.call(function, args);

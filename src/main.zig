@@ -4,19 +4,14 @@ pub fn main() !void {
 
     const allocator = da.allocator();
 
-    var physics = HavokPhysics.init(allocator) catch |err| {
-        log.err("failed to initialize physics: {}", .{err});
-
-        return;
-    };
+    var physics = try HavokPhysics.init(allocator);
     defer physics.deinit();
 
-    _ = physics.start() catch |err| {
-        log.err("failed to start: {}", .{err});
+    const result, const world_id = physics.world.create();
 
-        return;
-    };
+    log.info("{any}, {any}", .{ result, world_id });
 
+    _ = physics.shape.createCapsule(.{ 1, 1, 1 }, .{ 5, 5, 5 }, 10);
     _ = physics.shape.createSphere(.{ 1, 1, 1 }, 10);
 }
 

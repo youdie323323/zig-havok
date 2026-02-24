@@ -73,21 +73,7 @@ pub fn ComptimeStringMap(comptime Value: type) type {
 
         /// Returns the value for the key if any.
         pub fn getDefinitely(comptime self: @This(), comptime key: Key) Value {
-            comptime {
-                @setEvalBranchQuota(200 * self.kvs.len * self.kvs.len);
-
-                const len_kvs_set = self.groupKVsWithLength();
-
-                for (len_kvs_set) |len_kvs| {
-                    const len = len_kvs.len;
-                    if (key.len == len)
-                        for (len_kvs.kvs) |kv|
-                            if (eql(u8, kv[0], key[0..len]))
-                                return kv[1];
-                }
-
-                @compileError("Unregistered key");
-            }
+            comptime return self.get(key) orelse @compileError("Unregistered key");
         }
 
         /// Creates a list of kv sets grouped by different key lengths.

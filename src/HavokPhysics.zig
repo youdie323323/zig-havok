@@ -40,7 +40,7 @@ const Emscripten = struct {
                 name: []const u8,
                 kind: Kind,
 
-                /// Physics instance to use WAMR. Optional due to performance.
+                /// Physics instance to use WAMR.
                 physics: *HavokPhysics,
 
                 destructor: ?Destructor = null,
@@ -64,8 +64,26 @@ const Emscripten = struct {
                 //     .kind = .emval,
                 // };
 
-                pub fn castOpaque(comptime T: type, @"opaque": Opaque) T {
+                fn castOpaqueInner(comptime T: type, @"opaque": Opaque) T {
                     return @as(*allowzero const T, @ptrCast(@alignCast(@"opaque"))).*;
+                }
+
+                pub fn castOpaque(comptime T: type, @"opaque": Opaque) T {
+                    const info = @typeInfo(T);
+
+                    return switch (info) {
+                        .@"struct" => |struct_info| if (struct_info.is_tuple) blk: {
+                            const opaques_ptr: [*]allowzero const Opaque = @ptrCast(@alignCast(@"opaque"));
+
+                            var result: T = undefined;
+
+                            inline for (struct_info.fields, 0..) |field, i|
+                                @field(result, field.name) = castOpaque(field.type, opaques_ptr[i]);
+
+                            break :blk result;
+                        } else castOpaqueInner(T, @"opaque"),
+                        else => castOpaqueInner(T, @"opaque"),
+                    };
                 }
 
                 pub fn opacify(ptr: anytype) Opaque {
@@ -75,7 +93,7 @@ const Emscripten = struct {
                 fn opacifyAlloc(
                     comptime T: type,
                     allocator: mem.Allocator,
-                    arg: anytype,
+                    arg: T,
                 ) Opaque {
                     const ptr = allocator.create(T) catch unreachable;
 
@@ -119,7 +137,9 @@ const Emscripten = struct {
                             else
                                 wire.value,
                         ),
-                        .float, .bigint, .@"enum" => opacifyAlloc(u64, physics.allocator, wire.value),
+                        .float => opacifyAlloc(f64, physics.allocator, @floatFromInt(wire.value)),
+                        .bigint => opacifyAlloc(u64, physics.allocator, wire.value),
+                        .@"enum" => opacifyAlloc(u32, physics.allocator, @intCast(wire.value)),
                         .std_string => blk: {
                             const ptr = wire.value;
 
@@ -186,7 +206,7 @@ const Emscripten = struct {
                                 opaques[i] = getter_return_type.fromWire(.{ .value = physics.callSimple(getter, .{ getter_context, ptr }) catch unreachable });
                             }
 
-                            break :blk @ptrCast(&opaques);
+                            break :blk @ptrCast(opaques.ptr);
                         },
                         // .emval => @panic("emval features are not implemented"),
                         .memory_view => blk: {
@@ -444,14 +464,14 @@ const QSTransform = struct { Vector3, Quaternion, Vector3 };
 const Transform = struct { Vector3, Rotation };
 const Aabb = struct { Vector3, Vector3 };
 
-const BodyId = struct { c_longlong };
-const ShapeId = struct { c_longlong };
-const ConstraintId = struct { c_longlong };
-const WorldId = struct { c_longlong };
-const CollectorId = struct { c_longlong };
-const DebugGeometryId = struct { c_longlong };
+const BodyId = struct { u64 };
+const ShapeId = struct { u64 };
+const ConstraintId = struct { u64 };
+const WorldId = struct { u64 };
+const CollectorId = struct { u64 };
+const DebugGeometryId = struct { u64 };
 
-const Result = enum(c_int) {
+const Result = enum(u32) {
     ok,
     fail,
     invalid_handle,
@@ -459,7 +479,7 @@ const Result = enum(c_int) {
     not_implemented,
 };
 
-const MaterialCombine = enum(c_int) {
+const MaterialCombine = enum(u32) {
     geometric_mean,
     minimum,
     maximum,
@@ -504,6 +524,8 @@ fn replaceMethodImpl(
     function: MethodImpl,
 ) void {
     switch (function_index) {
+        // Begin shape
+
         cached_function_indices.getDefinitely("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
         cached_function_indices.getDefinitely("HP_Shape_CreateCapsule") => Shape.create_capsule_impl = function,
         cached_function_indices.getDefinitely("HP_Shape_CreateCylinder") => Shape.create_cylinder_impl = function,
@@ -538,14 +560,22 @@ fn replaceMethodImpl(
 
         cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => Shape.create_debug_display_geometry_impl = function,
 
+        // End shape
+
+        // Begin world
+
+        cached_function_indices.getDefinitely("HP_World_Create") => World.create_impl = function,
+
+        // End world
+
         else => undefined,
     }
 }
 
-pub const Shape = struct {
+const Shape = struct {
     physics: *HavokPhysics,
 
-    pub const Type = enum(c_int) {
+    pub const Type = enum(u64) {
         collider,
         container,
     };
@@ -619,7 +649,13 @@ pub const Shape = struct {
 
     /// Creates a geometry representing a capsule.
     pub inline fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
-        return castOpaque(CreaterReturn, create_capsule_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"), &point_a, &point_b, &radius));
+        const point_a_opaque_array: [3]Opaque = .{ opacify(&point_a[0]), opacify(&point_a[1]), opacify(&point_a[2]) };
+        const point_a_opaque_slice: []const Opaque = &point_a_opaque_array;
+
+        const point_b_opaque_array: [3]Opaque = .{ opacify(&point_b[0]), opacify(&point_b[1]), opacify(&point_b[2]) };
+        const point_b_opaque_slice: []const Opaque = &point_b_opaque_array;
+
+        return castOpaque(CreaterReturn, create_capsule_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"), &point_a_opaque_slice, &point_b_opaque_slice, &radius));
     }
 
     /// Creates a geometry representing a cylinder.
@@ -791,6 +827,87 @@ pub const Shape = struct {
     const opacify = Emscripten.Bind.Type.Instance.opacify;
 };
 
+const World = struct {
+    physics: *HavokPhysics,
+
+    const CreateReturn = struct { Result, WorldId };
+
+    pub var create_impl = &noopImpl;
+
+    /// Allocate a new handle for a world, which is the basis of a simulation.
+    pub inline fn create(self: *const @This()) CreateReturn {
+        return castOpaque(CreateReturn, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_World_Create")));
+    }
+
+    pub fn release(self: *@This(), a: u32) !u32 {
+        return self.physics.callExported("HP_World_Release", .{a});
+    }
+
+    pub fn getBodyBuffer(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_GetBodyBuffer", .{ a, b });
+    }
+
+    pub fn setGravity(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_SetGravity", .{ a, b });
+    }
+    pub fn getGravity(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_GetGravity", .{ a, b });
+    }
+
+    pub fn addBody(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_AddBody", .{ a, b, c });
+    }
+    pub fn removeBody(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_RemoveBody", .{ a, b });
+    }
+
+    pub fn getNumBodies(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_GetNumBodies", .{ a, b });
+    }
+
+    pub fn castRay(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_CastRay", .{ a, b, c });
+    }
+    pub fn castRayWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_CastRayWithCollector", .{ a, b, c });
+    }
+    pub fn pointProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_PointProximityWithCollector", .{ a, b, c });
+    }
+    pub fn shapeProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_ShapeProximityWithCollector", .{ a, b, c });
+    }
+    pub fn shapeCastWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_ShapeCastWithCollector", .{ a, b, c });
+    }
+
+    pub fn step(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_Step", .{ a, b });
+    }
+    pub fn setIdealStepTime(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_SetIdealStepTime", .{ a, b });
+    }
+
+    pub fn setSpeedLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_SetSpeedLimit", .{ a, b, c });
+    }
+    pub fn getSpeedLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 {
+        return self.physics.callExported("HP_World_GetSpeedLimit", .{ a, b, c });
+    }
+
+    pub fn getNextCollisionEvent(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_GetNextCollisionEvent", .{ a, b });
+    }
+    pub fn getNextTriggerEvent(self: *@This(), a: u32, b: u32) !u32 {
+        return self.physics.callExported("HP_World_GetNextTriggerEvent", .{ a, b });
+    }
+
+    const Opaque = Emscripten.Bind.Type.Instance.Opaque;
+
+    const castOpaque = Emscripten.Bind.Type.Instance.castOpaque;
+    const opacify = Emscripten.Bind.Type.Instance.opacify;
+};
+
 allocator: mem.Allocator,
 
 module: wamr.wasm_module_t = null,
@@ -949,41 +1066,7 @@ constraint: struct {
 
     // zig fmt: on
 },
-world: struct {
-    physics: *HavokPhysics,
-
-    // zig fmt: off
-
-    pub fn create(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_World_Create", .{a}); }
-    pub fn release(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_World_Release", .{a}); }
-
-    pub fn getBodyBuffer(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_GetBodyBuffer", .{a, b}); }
-
-    pub fn setGravity(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_SetGravity", .{a, b}); }
-    pub fn getGravity(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_GetGravity", .{a, b}); }
-
-    pub fn addBody(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_AddBody", .{a, b, c}); }
-    pub fn removeBody(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_RemoveBody", .{a, b}); }
-
-    pub fn getNumBodies(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_GetNumBodies", .{a, b}); }
-
-    pub fn castRay(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_CastRay", .{a, b, c}); }
-    pub fn castRayWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_CastRayWithCollector", .{a, b, c}); }
-    pub fn pointProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_PointProximityWithCollector", .{a, b, c}); }
-    pub fn shapeProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_ShapeProximityWithCollector", .{a, b, c}); }
-    pub fn shapeCastWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_ShapeCastWithCollector", .{a, b, c}); }
-
-    pub fn step(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_Step", .{a, b}); }
-    pub fn setIdealStepTime(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_SetIdealStepTime", .{a, b}); }
-
-    pub fn setSpeedLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_SetSpeedLimit", .{a, b, c}); }
-    pub fn getSpeedLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_World_GetSpeedLimit", .{a, b, c}); }
-
-    pub fn getNextCollisionEvent(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_GetNextCollisionEvent", .{a, b}); }
-    pub fn getNextTriggerEvent(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_World_GetNextTriggerEvent", .{a, b}); }
-
-    // zig fmt: on
-},
+world: World,
 query_collector: struct {
     physics: *HavokPhysics,
 
@@ -2409,10 +2492,22 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
 
     physics.exec_env = wamr.wasm_runtime_create_exec_env(physics.module_inst, stack_size);
     if (physics.exec_env == null)
-        return error.ExecEnvCreateFailed;
+        return error.ExecEnvCreationFailed;
 
     if (!wamr.wasm_runtime_get_export_table_inst(physics.module_inst, "__indirect_function_table", &physics.table_inst))
         return error.TableInstGetFailed;
+
+    {
+        _ = try physics.callExported("__wasm_call_ctors", &.{});
+
+        if (!wamr.wasm_application_execute_main(physics.module_inst, 0, null)) {
+            const exception = wamr.wasm_runtime_get_exception(physics.module_inst);
+
+            log.err("wasm execution failed: {s}", .{exception});
+
+            return error.MainExecutionFailed;
+        }
+    }
 
     return physics;
 }
@@ -2439,20 +2534,6 @@ pub fn deinit(self: *HavokPhysics) void {
     }
 
     self.allocator.destroy(self);
-}
-
-pub fn start(self: *HavokPhysics) !u32 {
-    _ = try self.callExported("__wasm_call_ctors", &.{});
-
-    if (wamr.wasm_application_execute_main(self.module_inst, 0, null))
-        return wamr.wasm_runtime_get_wasi_exit_code(self.module_inst)
-    else {
-        const exception = wamr.wasm_runtime_get_exception(self.module_inst);
-
-        log.err("wasm execution failed: {s}", .{exception});
-
-        return error.MainExecutionFailed;
-    }
 }
 
 fn registerNativeSymbols(

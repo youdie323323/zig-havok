@@ -123,7 +123,7 @@ const Emscripten = struct {
                         .void => @ptrFromInt(0),
                         .bool => opacifyAlloc(
                             bool,
-                            physics.allocator,
+                            physics.embind_temp_allocator,
                             if (wire.value != 0)
                                 true
                             else
@@ -131,22 +131,22 @@ const Emscripten = struct {
                         ),
                         .integer => opacifyAlloc(
                             u64,
-                            physics.allocator,
+                            physics.embind_temp_allocator,
                             if (self.integer_bitshift) |bitshift|
                                 (wire.value << bitshift) >> bitshift
                             else
                                 wire.value,
                         ),
-                        .float => opacifyAlloc(f64, physics.allocator, @floatFromInt(wire.value)),
-                        .bigint => opacifyAlloc(u64, physics.allocator, wire.value),
-                        .@"enum" => opacifyAlloc(u32, physics.allocator, @intCast(wire.value)),
+                        .float => opacifyAlloc(f64, physics.embind_temp_allocator, @floatFromInt(wire.value)),
+                        .bigint => opacifyAlloc(u64, physics.embind_temp_allocator, wire.value),
+                        .@"enum" => opacifyAlloc(u32, physics.embind_temp_allocator, @intCast(wire.value)),
                         .std_string => blk: {
                             const ptr = wire.value;
 
                             const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
                             const raw_payload_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr + 4) orelse unreachable;
 
-                            const allocator = physics.allocator;
+                            const allocator = physics.embind_temp_allocator;
 
                             const native_payload_ptr: [*]const u8 = @ptrCast(raw_payload_ptr);
 
@@ -164,7 +164,7 @@ const Emscripten = struct {
                             const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
                             const raw_payload_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr + 4) orelse unreachable;
 
-                            const allocator = physics.allocator;
+                            const allocator = physics.embind_temp_allocator;
 
                             const native_payload_ptr: [*]const u8 = @ptrCast(raw_payload_ptr);
 
@@ -193,7 +193,7 @@ const Emscripten = struct {
 
                             const converters = self.tuple_converters.?;
 
-                            const allocator = physics.allocator;
+                            const allocator = physics.embind_temp_allocator;
 
                             const opaques = allocator.alloc(Opaque, elements_len) catch unreachable;
                             errdefer allocator.free(opaques);
@@ -221,7 +221,7 @@ const Emscripten = struct {
 
                             const raw_data_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, data_ptr) orelse unreachable;
 
-                            const allocator = physics.allocator;
+                            const allocator = physics.embind_temp_allocator;
 
                             break :blk switch (self.data_type.?) {
                                 0 => createSliceOpaque(i8, allocator, raw_data_ptr, size),
@@ -456,13 +456,26 @@ fn freeDesturctor(physics: *HavokPhysics, ptr: u64) callconv(.c) void {
     _ = physics.callExported("free", &.{.{ .value = ptr }}) catch unreachable;
 }
 
-const Vector3 = @Vector(3, f64);
+const Vector = @Vector(3, f64);
 const Quaternion = @Vector(4, f64);
-const Rotation = @Vector(3, Vector3);
-const QTransform = struct { Vector3, Quaternion };
-const QSTransform = struct { Vector3, Quaternion, Vector3 };
-const Transform = struct { Vector3, Rotation };
-const Aabb = struct { Vector3, Vector3 };
+const Rotation = @Vector(3, Vector);
+const QTransform = struct { Vector, Quaternion };
+const QSTransform = struct { Vector, Quaternion, Vector };
+const Transform = struct { Vector, Rotation };
+const Aabb = struct { Vector, Vector };
+
+fn opacifyVectorElements(
+    comptime len: comptime_int,
+    comptime Element: type,
+    vector: *const @Vector(len, Element),
+) [len]Emscripten.Bind.Type.Instance.Opaque {
+    var result: [len]Emscripten.Bind.Type.Instance.Opaque = undefined;
+
+    inline for (0..len) |i|
+        result[i] = Emscripten.Bind.Type.Instance.opacify(&vector[i]);
+
+    return result;
+}
 
 const BodyId = struct { u64 };
 const ShapeId = struct { u64 };
@@ -489,11 +502,11 @@ const MaterialCombine = enum(u32) {
 
 const MassProperties = struct {
     /// Center of mass.
-    Vector3,
+    Vector,
     /// Mass.
     f64,
     /// Inertia for mass of 1.
-    Vector3,
+    Vector,
     /// Inertia orientation.
     Quaternion,
 };
@@ -640,40 +653,66 @@ const Shape = struct {
     pub var create_debug_display_geometry_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
-    pub inline fn createSphere(self: *const @This(), center: Vector3, radius: f64) CreaterReturn {
-        const center_opaque_array: [3]Opaque = .{ opacify(&center[0]), opacify(&center[1]), opacify(&center[2]) };
-        const center_opaque_slice: []const Opaque = &center_opaque_array;
+    pub inline fn createSphere(self: *const @This(), center: Vector, radius: f64) CreaterReturn {
+        const center_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &center);
 
-        return castOpaque(CreaterReturn, create_sphere_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"), &center_opaque_slice, &radius));
+        return castOpaque(CreaterReturn, create_sphere_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"),
+            &center_opaque_slice,
+            &radius,
+        ));
     }
 
     /// Creates a geometry representing a capsule.
-    pub inline fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
-        const point_a_opaque_array: [3]Opaque = .{ opacify(&point_a[0]), opacify(&point_a[1]), opacify(&point_a[2]) };
-        const point_a_opaque_slice: []const Opaque = &point_a_opaque_array;
+    pub inline fn createCapsule(self: *const @This(), point_a: Vector, point_b: Vector, radius: f64) CreaterReturn {
+        const point_a_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
+        const point_b_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
 
-        const point_b_opaque_array: [3]Opaque = .{ opacify(&point_b[0]), opacify(&point_b[1]), opacify(&point_b[2]) };
-        const point_b_opaque_slice: []const Opaque = &point_b_opaque_array;
-
-        return castOpaque(CreaterReturn, create_capsule_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"), &point_a_opaque_slice, &point_b_opaque_slice, &radius));
+        return castOpaque(CreaterReturn, create_capsule_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"),
+            &point_a_opaque_slice,
+            &point_b_opaque_slice,
+            &radius,
+        ));
     }
 
     /// Creates a geometry representing a cylinder.
-    pub inline fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: f64) CreaterReturn {
-        return castOpaque(CreaterReturn, create_cylinder_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"), &point_a, &point_b, &radius));
+    pub inline fn createCylinder(self: *const @This(), point_a: Vector, point_b: Vector, radius: f64) CreaterReturn {
+        const point_a_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
+        const point_b_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
+
+        return castOpaque(CreaterReturn, create_cylinder_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"),
+            &point_a_opaque_slice,
+            &point_b_opaque_slice,
+            &radius,
+        ));
     }
 
     /// Creates a geometry representing a box.
     pub inline fn createBox(
         self: *const @This(),
         /// Position of the box center (in shape space).
-        center: Vector3,
+        center: Vector,
         /// Orientation of the box (in shape space).
         rotation: Quaternion,
         /// Total size of the box.
-        extents: Vector3,
+        extents: Vector,
     ) CreaterReturn {
-        return castOpaque(CreaterReturn, create_box_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"), &center, &rotation, &extents));
+        const center_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &center);
+        const rotation_opaque_slice: []const Opaque = &opacifyVectorElements(4, f64, &rotation);
+        const extents_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &extents);
+
+        return castOpaque(CreaterReturn, create_box_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"),
+            &center_opaque_slice,
+            &rotation_opaque_slice,
+            &extents_opaque_slice,
+        ));
     }
 
     /// Creates a geometry which encloses all the `vertices`.
@@ -706,12 +745,21 @@ const Shape = struct {
         num_z_samples: usize,
         /// X and Z components should be converted from integer space to shape space.
         /// Y supplies a scaling factor for the height.
-        scale: Vector3,
+        scale: Vector,
         /// Should be a buffer of floats, of size (num_x_samples * num_z_samples), describing heights at (x, z) of
         /// [(0, 0), (1, 0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
         heights: u32,
     ) CreaterReturn {
-        return castOpaque(CreaterReturn, create_height_field_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"), &num_x_samples, &num_z_samples, &scale, &heights));
+        const scale_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &scale);
+
+        return castOpaque(CreaterReturn, create_height_field_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"),
+            &num_x_samples,
+            &num_z_samples,
+            &scale_opaque_slice,
+            &heights,
+        ));
     }
 
     /// Sets the collision info for the shape to the information in `filter_info`.
@@ -931,6 +979,10 @@ embind_awaiting_dependencies: Emscripten.Bind.AwaitingDependencies,
 embind_invoker_contexts: [cached_function_indices.kvs.len]?*Emscripten.Bind.InvokerContext = @splat(null),
 
 embind_invoker_function_indices: std.StringHashMap(usize),
+
+embind_temp_arena: heap.ArenaAllocator,
+/// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
+embind_temp_allocator: mem.Allocator,
 
 shape: Shape,
 debug_geometry: struct {
@@ -2394,6 +2446,9 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
 
         .embind_invoker_function_indices = .init(allocator),
 
+        .embind_temp_arena = undefined,
+        .embind_temp_allocator = undefined,
+
         .shape = .{ .physics = physics },
         .debug_geometry = .{ .physics = physics },
         .body = .{ .physics = physics },
@@ -2405,6 +2460,9 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
 
     physics.embind_arena = .init(allocator);
     physics.embind_allocator = physics.embind_arena.allocator();
+
+    physics.embind_temp_arena = .init(allocator);
+    physics.embind_temp_allocator = physics.embind_temp_arena.allocator();
 
     for (function_names, 0..) |function_name, i| // Add function indices
         try physics.embind_invoker_function_indices.put(function_name, i);
@@ -2531,6 +2589,8 @@ pub fn deinit(self: *HavokPhysics) void {
         self.embind_awaiting_dependencies.deinit();
 
         self.embind_invoker_function_indices.deinit();
+
+        self.embind_temp_arena.deinit();
     }
 
     self.allocator.destroy(self);
@@ -2793,11 +2853,11 @@ pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: []co
 }
 
 pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
-    const args_info = @typeInfo(@TypeOf(args));
+    const args_info_struct_fields = @typeInfo(@TypeOf(args)).@"struct".fields;
 
-    var argv: [args_info.@"struct".fields.len]u32 = undefined;
+    var argv: [args_info_struct_fields.len]u32 = undefined;
 
-    inline for (args_info.@"struct".fields, 0..) |field, i|
+    inline for (args_info_struct_fields, 0..) |field, i|
         argv[i] = @intCast(@field(args, field.name));
 
     if (!wamr.wasm_runtime_call_wasm(
@@ -2844,6 +2904,13 @@ pub fn getFunctionIndirect(self: *HavokPhysics, index: u32) !wamr.wasm_function_
 
         break :blk function;
     };
+}
+
+/// Resets temp values.
+/// NOTE: This should not called for each physical call (like world.create), 
+/// you should block your calls, and deferly call this.
+pub fn free(self: *HavokPhysics) void {
+    _ = self.embind_temp_arena.reset(.retain_capacity);
 }
 
 // zig fmt: off

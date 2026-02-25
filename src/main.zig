@@ -7,12 +7,16 @@ pub fn main() !void {
     var physics = try HavokPhysics.init(allocator);
     defer physics.deinit();
 
-    const result, const world_id = physics.world.create();
+    {
+        defer physics.free();
 
-    log.info("{any}, {any}", .{ result, world_id });
+        const result, const world_id = physics.world.create();
 
-    _ = physics.shape.createCapsule(.{ 1, 1, 1 }, .{ 5, 5, 5 }, 10);
-    _ = physics.shape.createSphere(.{ 1, 1, 1 }, 10);
+        log.info("{any}, {any}", .{ result, world_id });
+
+        // _ = physics.shape.createCapsule(.{ 1, 1, 1 }, .{ 5, 5, 5 }, 10);
+        // _ = physics.shape.createSphere(.{ 1, 1, 1 }, 10);
+    }
 }
 
 const std = @import("std");

@@ -154,7 +154,7 @@ const Emscripten = struct {
 
                             const result = allocator.dupe(u8, native_payload_ptr[0..length]) catch unreachable;
 
-                            freeDesturctor(physics, ptr);
+                            freeDesturctor(physics, @intCast(ptr));
 
                             break :blk @ptrCast(&result);
                         },
@@ -181,7 +181,7 @@ const Emscripten = struct {
                                 else => @ptrCast(@as([*]const u32, @ptrCast(@alignCast(result.ptr)))[0..length]),
                             };
 
-                            freeDesturctor(physics, ptr);
+                            freeDesturctor(physics, @intCast(ptr));
 
                             break :blk slice_opaque;
                         },
@@ -205,6 +205,8 @@ const Emscripten = struct {
 
                                 opaques[i] = getter_return_type.fromWire(.{ .value = physics.callSimple(getter, .{ getter_context, ptr }) catch unreachable });
                             }
+
+                            _ = physics.callSimple(self.destructor.?.wasm, .{ptr}) catch unreachable;
 
                             break :blk @ptrCast(opaques.ptr);
                         },
@@ -326,7 +328,7 @@ const Emscripten = struct {
 
                             const converters = self.tuple_converters.?;
 
-                            const ptr = physics.callSimple(self.tuple_constructor, .{}) catch unreachable;
+                            const ptr = physics.callVoid(self.tuple_constructor) catch unreachable;
 
                             const opaques = castOpaque([]Opaque, @"opaque");
 
@@ -343,7 +345,7 @@ const Emscripten = struct {
                             }
 
                             if (free_ptr)
-                                freeDesturctor(physics, ptr);
+                                _ = physics.callSimple(self.destructor.?.wasm, .{ptr}) catch unreachable;
 
                             break :blk .{ .value = ptr };
                         },
@@ -452,8 +454,8 @@ fn ExternalizeTuple(comptime Tuple: type) type {
 }
 
 /// Basic free destructor for pointer.
-fn freeDesturctor(physics: *HavokPhysics, ptr: u64) callconv(.c) void {
-    _ = physics.callExported("free", &.{.{ .value = ptr }}) catch unreachable;
+fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
+    _ = physics.callSimple("free", .{ptr}) catch unreachable;
 }
 
 const Vector = @Vector(3, f64);
@@ -473,6 +475,20 @@ fn opacifyVectorElements(
 
     inline for (0..len) |i|
         result[i] = Emscripten.Bind.Type.Instance.opacify(&vector[i]);
+
+    return result;
+}
+
+fn opacifyTupleElements(
+    comptime Tuple: type,
+    tuple: *const Tuple,
+) [@typeInfo(Tuple).@"struct".fields.len]Emscripten.Bind.Type.Instance.Opaque {
+    const len = @typeInfo(Tuple).@"struct".fields.len;
+
+    var result: [len]Emscripten.Bind.Type.Instance.Opaque = undefined;
+
+    inline for (0..len) |i|
+        result[i] = Emscripten.Bind.Type.Instance.opacify(&tuple.*[i]);
 
     return result;
 }
@@ -654,40 +670,40 @@ const Shape = struct {
 
     /// Creates geometry representing a sphere.
     pub inline fn createSphere(self: *const @This(), center: Vector, radius: f64) CreaterReturn {
-        const center_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &center);
+        const center_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &center);
 
         return castOpaque(CreaterReturn, create_sphere_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"),
-            &center_opaque_slice,
+            &center_opaque_vector,
             &radius,
         ));
     }
 
     /// Creates a geometry representing a capsule.
     pub inline fn createCapsule(self: *const @This(), point_a: Vector, point_b: Vector, radius: f64) CreaterReturn {
-        const point_a_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
-        const point_b_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
+        const point_a_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
+        const point_b_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
 
         return castOpaque(CreaterReturn, create_capsule_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"),
-            &point_a_opaque_slice,
-            &point_b_opaque_slice,
+            &point_a_opaque_vector,
+            &point_b_opaque_vector,
             &radius,
         ));
     }
 
     /// Creates a geometry representing a cylinder.
     pub inline fn createCylinder(self: *const @This(), point_a: Vector, point_b: Vector, radius: f64) CreaterReturn {
-        const point_a_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
-        const point_b_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
+        const point_a_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
+        const point_b_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
 
         return castOpaque(CreaterReturn, create_cylinder_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"),
-            &point_a_opaque_slice,
-            &point_b_opaque_slice,
+            &point_a_opaque_vector,
+            &point_b_opaque_vector,
             &radius,
         ));
     }
@@ -702,16 +718,16 @@ const Shape = struct {
         /// Total size of the box.
         extents: Vector,
     ) CreaterReturn {
-        const center_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &center);
-        const rotation_opaque_slice: []const Opaque = &opacifyVectorElements(4, f64, &rotation);
-        const extents_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &extents);
+        const center_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &center);
+        const rotation_opaque_vector: []const Opaque = &opacifyVectorElements(4, f64, &rotation);
+        const extents_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &extents);
 
         return castOpaque(CreaterReturn, create_box_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"),
-            &center_opaque_slice,
-            &rotation_opaque_slice,
-            &extents_opaque_slice,
+            &center_opaque_vector,
+            &rotation_opaque_vector,
+            &extents_opaque_vector,
         ));
     }
 
@@ -750,14 +766,14 @@ const Shape = struct {
         /// [(0, 0), (1, 0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
         heights: u32,
     ) CreaterReturn {
-        const scale_opaque_slice: []const Opaque = &opacifyVectorElements(3, f64, &scale);
+        const scale_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &scale);
 
         return castOpaque(CreaterReturn, create_height_field_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"),
             &num_x_samples,
             &num_z_samples,
-            &scale_opaque_slice,
+            &scale_opaque_vector,
             &heights,
         ));
     }
@@ -765,7 +781,16 @@ const Shape = struct {
     /// Sets the collision info for the shape to the information in `filter_info`.
     /// This can prevent collisions between shapes and queries, depending on how you have configured the filter.
     pub inline fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
-        return castOpaque(Result, set_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo")), &id, &filter_info));
+        const id_opaque_tuple: []const Opaque = &opacifyTupleElements(ShapeId, &id);
+
+        const filter_info_opaque_tuple: []const Opaque = &opacifyTupleElements(FilterInfo, &filter_info);
+
+        return castOpaque(Result, set_filter_info_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo")),
+            &id_opaque_tuple,
+            &filter_info_opaque_tuple,
+        ));
     }
 
     /// Get the collision filter info for a shape.
@@ -2863,7 +2888,7 @@ pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args
     if (!wamr.wasm_runtime_call_wasm(
         self.exec_env,
         function,
-        @intCast(argv.len),
+        comptime @intCast(args_info_struct_fields.len),
         &argv,
     )) {
         const exception = wamr.wasm_runtime_get_exception(self.module_inst);
@@ -2873,10 +2898,27 @@ pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args
         return error.FunctionCallFailed;
     }
 
-    return if (argv.len > 0)
-        argv[0]
-    else
-        0;
+    return argv[0];
+}
+
+/// You must use this function if your args is empty.
+pub fn callVoid(self: *HavokPhysics, function: wamr.wasm_function_inst_t) !u32 {
+    var argv: [1]u32 = undefined;
+
+    if (!wamr.wasm_runtime_call_wasm(
+        self.exec_env,
+        function,
+        0, // argc = 0
+        &argv,
+    )) {
+        const exception = wamr.wasm_runtime_get_exception(self.module_inst);
+
+        log.err("wasm execution failed: {s}", .{exception});
+
+        return error.FunctionCallFailed;
+    }
+
+    return argv[0];
 }
 
 pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
@@ -2907,7 +2949,7 @@ pub fn getFunctionIndirect(self: *HavokPhysics, index: u32) !wamr.wasm_function_
 }
 
 /// Resets temp values.
-/// NOTE: This should not called for each physical call (like world.create), 
+/// NOTE: This should not called for each physical call (like world.create),
 /// you should block your calls, and deferly call this.
 pub fn free(self: *HavokPhysics) void {
     _ = self.embind_temp_arena.reset(.retain_capacity);

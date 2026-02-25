@@ -1,5 +1,5 @@
 pub fn main() !void {
-    var da: heap.DebugAllocator(.{}) = .{};
+    var da: heap.DebugAllocator(.{}) = .init;
     defer _ = da.detectLeaks();
 
     const allocator = da.allocator();
@@ -14,8 +14,9 @@ pub fn main() !void {
 
         log.info("{any}, {any}", .{ result, world_id });
 
-        // _ = physics.shape.createCapsule(.{ 1, 1, 1 }, .{ 5, 5, 5 }, 10);
-        // _ = physics.shape.createSphere(.{ 1, 1, 1 }, 10);
+        _, const shape_id_capsule = physics.shape.createCapsule(.{ 1, 1, 1 }, .{ 5, 5, 5 }, 10);
+
+        _ = physics.shape.setFilterInfo(shape_id_capsule, .{ 2, 2 });
     }
 }
 

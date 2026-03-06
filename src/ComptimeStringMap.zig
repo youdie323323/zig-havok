@@ -1,5 +1,4 @@
 /// String to V mapping for comptime-known key/value pairs.
-/// Branches on the key length, then compares each string.
 pub fn ComptimeStringMap(comptime Value: type) type {
     return struct {
         const Key = []const u8;

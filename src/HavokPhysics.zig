@@ -311,7 +311,99 @@ fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Inst
     return @ptrFromInt(0); // Undefined
 }
 
-/// Basic free destructor for pointer.
+/// You must get function_index from (physics.embind_invoker_function_indices).
+fn replaceMethodImpl(
+    function_index: usize,
+    function: MethodImpl,
+) void {
+    switch (function_index) {
+        // Begin shape
+
+        cached_function_indices.getDefinitely("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateCapsule") => Shape.create_capsule_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateCylinder") => Shape.create_cylinder_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateBox") => Shape.create_box_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull") => Shape.create_convex_hull_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateMesh") => Shape.create_mesh_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_CreateHeightField") => Shape.create_height_field_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo") => Shape.set_filter_info_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo") => Shape.get_filter_info_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_SetMaterial") => Shape.set_material_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_GetMaterial") => Shape.get_material_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetDensity") => Shape.get_density_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_SetDensity") => Shape.set_density_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_AddChild") => Shape.add_child_impl = function,
+        cached_function_indices.getDefinitely("HP_Shape_RemoveChild") => Shape.remove_child_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetNumChildren") => Shape.get_num_children_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetChildShape") => Shape.get_child_shape_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetType") => Shape.get_type_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox") => Shape.get_bounding_box_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_Release") => Shape.release_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties") => Shape.build_mass_properties_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext") => Shape.path_iterator_get_next_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_SetTrigger") => Shape.set_trigger_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => Shape.create_debug_display_geometry_impl = function,
+
+        // End shape
+
+        // Begin world
+
+        cached_function_indices.getDefinitely("HP_World_Create") => World.create_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_Release") => World.release_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_GetBodyBuffer") => World.get_body_buffer_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_SetGravity") => World.set_gravity_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_AddBody") => World.add_body_impl = function,
+        cached_function_indices.getDefinitely("HP_World_RemoveBody") => World.remove_body_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_GetNumBodies") => World.get_num_bodies_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_CastRay") => World.cast_ray_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_CastRayWithCollector") => World.cast_ray_with_collector_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_PointProximityWithCollector") => World.point_proximity_with_collector_impl = function,
+        cached_function_indices.getDefinitely("HP_World_ShapeProximityWithCollector") => World.shape_proximity_with_collector_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_ShapeCastWithCollector") => World.shape_cast_with_collector_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_Step") => World.step_impl = function,
+        cached_function_indices.getDefinitely("HP_World_SetIdealStepTime") => World.set_ideal_step_time_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_SetSpeedLimit") => World.set_speed_limit_impl = function,
+        cached_function_indices.getDefinitely("HP_World_GetSpeedLimit") => World.get_speed_limit_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_GetCollisionEvents") => World.get_collision_events_impl = function,
+        cached_function_indices.getDefinitely("HP_World_GetNextCollisionEvent") => World.get_next_collision_event_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_GetTriggerEvents") => World.get_trigger_events_impl = function,
+        cached_function_indices.getDefinitely("HP_World_GetNextTriggerEvent") => World.get_next_trigger_event_impl = function,
+
+        // End world
+
+        else => undefined,
+    }
+}
+
+/// Basic free destructor of pointer.
 fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
     _ = physics.callExportedSimple("free", .{ptr}) catch unreachable;
 }
@@ -409,72 +501,66 @@ const FilterInfo = struct {
     u32,
 };
 
-/// You must get function_index from (physics.embind_invoker_function_indices).
-fn replaceMethodImpl(
-    function_index: usize,
-    function: MethodImpl,
-) void {
-    switch (function_index) {
-        // Begin shape
+const RayCastInput = struct {
+    /// Start.
+    Vector3,
+    /// End.
+    Vector3,
+    /// Collision filter info.
+    FilterInfo,
+    /// Should hit triggers.
+    bool,
+    /// Optional body id to ignore.
+    BodyId,
+};
 
-        cached_function_indices.getDefinitely("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateCapsule") => Shape.create_capsule_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateCylinder") => Shape.create_cylinder_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateBox") => Shape.create_box_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull") => Shape.create_convex_hull_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateMesh") => Shape.create_mesh_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateHeightField") => Shape.create_height_field_impl = function,
+const PointProximityInput = struct {
+    /// Point position.
+    Vector3,
+    /// Max distance.
+    Float,
+    /// Collision filter info.
+    FilterInfo,
+    /// Should hit triggers.
+    bool,
+    /// Optional body id to ignore.
+    BodyId,
+};
 
-        cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo") => Shape.set_filter_info_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo") => Shape.get_filter_info_impl = function,
+const ShapeProximityInput = struct {
+    /// Shape id.
+    ShapeId,
+    /// Shape position.
+    Vector3,
+    /// Shape orientation.
+    Quaternion,
+    /// Max distance.
+    Float,
+    /// Should hit triggers.
+    bool,
+    /// Optional body id to ignore.
+    BodyId,
+};
 
-        cached_function_indices.getDefinitely("HP_Shape_SetMaterial") => Shape.set_material_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_GetMaterial") => Shape.get_material_impl = function,
+const ShapeCastInput = struct {
+    /// Shape id.
+    ShapeId,
+    /// Shape orientation.
+    Quaternion,
+    /// Cast start position.
+    Vector3,
+    /// Cast end position.
+    Vector3,
+    /// Should hit triggers.
+    bool,
+    /// Optional body id to ignore.
+    BodyId,
+};
 
-        cached_function_indices.getDefinitely("HP_Shape_GetDensity") => Shape.get_density_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_SetDensity") => Shape.set_density_impl = function,
+const IntResult = struct { Result, i32 };
 
-        cached_function_indices.getDefinitely("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_AddChild") => Shape.add_child_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_RemoveChild") => Shape.remove_child_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_GetNumChildren") => Shape.get_num_children_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_GetChildShape") => Shape.get_child_shape_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_GetType") => Shape.get_type_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox") => Shape.get_bounding_box_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_Release") => Shape.release_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties") => Shape.build_mass_properties_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext") => Shape.path_iterator_get_next_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_SetTrigger") => Shape.set_trigger_impl = function,
-
-        cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => Shape.create_debug_display_geometry_impl = function,
-
-        // End shape
-
-        // Begin world
-
-        cached_function_indices.getDefinitely("HP_World_Create") => World.create_impl = function,
-
-        cached_function_indices.getDefinitely("HP_World_Release") => World.release_impl = function,
-
-        cached_function_indices.getDefinitely("HP_World_GetBodyBuffer") => World.get_body_buffer_impl = function,
-
-        // End world
-
-        else => undefined,
-    }
-}
-
-const IntResult = struct { Result, u32 };
 const FloatResult = struct { Result, Float };
+const FloatPairResult = struct { Result, Float, Float };
 
 const Shape = struct {
     physics: *HavokPhysics,
@@ -485,7 +571,7 @@ const Shape = struct {
     };
 
     pub const PathIterator = struct {
-        /// ShapeId.
+        /// Shape id.
         u64,
         /// Path data.
         u64,
@@ -494,7 +580,6 @@ const Shape = struct {
     const OurResult = struct { Result, ShapeId };
 
     const TypeResult = struct { Result, Type };
-
     const FilterInfoResult = struct { Result, FilterInfo };
     const MaterialResult = struct { Result, Material };
     const AabbResult = struct { Result, Aabb };
@@ -622,7 +707,7 @@ const Shape = struct {
         self: *const @This(),
         /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
         vertices: u32,
-        num_vertices: usize,
+        num_vertices: i32,
     ) OurResult {
         return castOpaque(OurResult, create_convex_hull_impl(
             self.physics,
@@ -637,10 +722,10 @@ const Shape = struct {
         self: *const @This(),
         /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
         vertices: u32,
-        num_vertices: usize,
+        num_vertices: i32,
         /// Should be triples of 32-bit integers which index into `vertices`.
         triangles: u32,
-        num_triangles: usize,
+        num_triangles: i32,
     ) OurResult {
         return castOpaque(OurResult, create_mesh_impl(
             self.physics,
@@ -967,6 +1052,34 @@ const World = struct {
 
     pub var get_body_buffer_impl = &noopImpl;
 
+    pub var set_gravity_impl = &noopImpl;
+
+    pub var add_body_impl = &noopImpl;
+    pub var remove_body_impl = &noopImpl;
+
+    pub var get_num_bodies_impl = &noopImpl;
+
+    pub var cast_ray_impl = &noopImpl;
+
+    pub var cast_ray_with_collector_impl = &noopImpl;
+
+    pub var point_proximity_with_collector_impl = &noopImpl;
+    pub var shape_proximity_with_collector_impl = &noopImpl;
+
+    pub var shape_cast_with_collector_impl = &noopImpl;
+
+    pub var step_impl = &noopImpl;
+    pub var set_ideal_step_time_impl = &noopImpl;
+
+    pub var set_speed_limit_impl = &noopImpl;
+    pub var get_speed_limit_impl = &noopImpl;
+
+    pub var get_collision_events_impl = &noopImpl;
+    pub var get_next_collision_event_impl = &noopImpl;
+
+    pub var get_trigger_events_impl = &noopImpl;
+    pub var get_next_trigger_event_impl = &noopImpl;
+
     /// Allocate a new handle for a world, which is the basis of a simulation.
     pub fn create(self: *const @This()) OurResult {
         return castOpaque(OurResult, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_World_Create")));
@@ -998,59 +1111,328 @@ const World = struct {
         ));
     }
 
-    pub fn setGravity(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_SetGravity", .{ a, b });
-    }
-    pub fn getGravity(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_GetGravity", .{ a, b });
+    /// Set the global acceleration due to gravity of a world. This is applied to all dynamic bodies each step.
+    pub fn setGravity(self: *const @This(), id: WorldId, gravity: Vector3) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const gravity_opaque_array = opacifyVectorElements(3, Float, &gravity);
+        const gravity_opaque_vector: []const Opaque = &gravity_opaque_array;
+
+        return castOpaque(Result, set_gravity_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_SetGravity"),
+            &id_opaque_tuple,
+            &gravity_opaque_vector,
+        ));
     }
 
-    pub fn addBody(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_AddBody", .{ a, b, c });
-    }
-    pub fn removeBody(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_RemoveBody", .{ a, b });
+    // pub fn getGravity(self: *const @This(), a: u32, b: u32) !u32 {
+    //     return self.physics.callExported("HP_World_GetGravity", .{ a, b });
+    // }
+
+    /// Adds a body to the world, where it will partake in the simulation in the next step. A body can only be in a single world at a time.
+    pub fn addBody(self: *const @This(), id: WorldId, body_id: BodyId, start_asleep: bool) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const body_id_opaque_array = opacifyTupleElements(BodyId, &body_id);
+        const body_id_opaque_tuple: []const Opaque = &body_id_opaque_array;
+
+        return castOpaque(Result, add_body_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_AddBody"),
+            &id_opaque_tuple,
+            &body_id_opaque_tuple,
+            &start_asleep,
+        ));
     }
 
-    pub fn getNumBodies(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_GetNumBodies", .{ a, b });
+    /// Remove a body from the world.
+    pub fn removeBody(self: *const @This(), id: WorldId, body_id: BodyId) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const body_id_opaque_array = opacifyTupleElements(BodyId, &body_id);
+        const body_id_opaque_tuple: []const Opaque = &body_id_opaque_array;
+
+        return castOpaque(Result, remove_body_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_RemoveBody"),
+            &id_opaque_tuple,
+            &body_id_opaque_tuple,
+        ));
     }
 
-    pub fn castRay(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_CastRay", .{ a, b, c });
-    }
-    pub fn castRayWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_CastRayWithCollector", .{ a, b, c });
-    }
-    pub fn pointProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_PointProximityWithCollector", .{ a, b, c });
-    }
-    pub fn shapeProximityWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_ShapeProximityWithCollector", .{ a, b, c });
-    }
-    pub fn shapeCastWithCollector(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_ShapeCastWithCollector", .{ a, b, c });
+    /// Return the number of bodies added to the world.
+    pub fn getNumBodies(self: *const @This(), id: WorldId) IntResult {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(IntResult, get_num_bodies_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetNumBodies"),
+            &id_opaque_tuple,
+        ));
     }
 
-    pub fn step(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_Step", .{ a, b });
-    }
-    pub fn setIdealStepTime(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_SetIdealStepTime", .{ a, b });
+    /// Advanced use only. Perform a raycast using structures preallocated in the WASM memory.
+    /// `world` should be the address of an HP_World, `query` should be the address of a RayCastInput, and
+    /// `result` should be the address of a buffer of `max_results` RaycastResult. Returns the number of hits.
+    pub fn castRay(self: *const @This(), world: u32, query: u32, result: u32, max_results: i32) i32 {
+        return castOpaque(i32, cast_ray_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_CastRay"),
+            &world,
+            &query,
+            &result,
+            &max_results,
+        ));
     }
 
-    pub fn setSpeedLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_SetSpeedLimit", .{ a, b, c });
-    }
-    pub fn getSpeedLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 {
-        return self.physics.callExported("HP_World_GetSpeedLimit", .{ a, b, c });
+    /// Perform the raycast described by `query` against the bodies added to the world, storing the results in the collector.
+    /// Collector will be cleared of any previous results.
+    pub fn castRayWithCollector(self: *const @This(), id: WorldId, collector_id: CollectorId, query: RayCastInput) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const collector_id_opaque_array = opacifyTupleElements(CollectorId, &collector_id);
+        const collector_id_opaque_tuple: []const Opaque = &collector_id_opaque_array;
+
+        const query_1_opaque_array = opacifyVectorElements(3, Float, &query[0]);
+        const query_2_opaque_array = opacifyVectorElements(3, Float, &query[1]);
+        const query_3_opaque_array = opacifyTupleElements(FilterInfo, &query[2]);
+        const query_5_opaque_array = opacifyTupleElements(BodyId, &query[4]);
+
+        const query_1_opaque_vector: []const Opaque = &query_1_opaque_array;
+        const query_2_opaque_vector: []const Opaque = &query_2_opaque_array;
+        const query_3_opaque_vector: []const Opaque = &query_3_opaque_array;
+        const query_5_opaque_vector: []const Opaque = &query_5_opaque_array;
+
+        const query_opaque_tuple: []const Opaque = &.{
+            opacify(&query_1_opaque_vector),
+            opacify(&query_2_opaque_vector),
+            opacify(&query_3_opaque_vector),
+            opacify(&query[3]),
+            opacify(&query_5_opaque_vector),
+        };
+
+        return castOpaque(Result, cast_ray_with_collector_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_CastRayWithCollector"),
+            &id_opaque_tuple,
+            &collector_id_opaque_tuple,
+            &query_opaque_tuple,
+        ));
     }
 
-    pub fn getNextCollisionEvent(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_GetNextCollisionEvent", .{ a, b });
+    /// Perform the point proximity described by `query` against the bodies added to the world, storing the results in the collector.
+    /// Collector will be cleared of any previous results.
+    pub fn pointProximityWithCollector(self: *const @This(), id: WorldId, collector_id: CollectorId, query: PointProximityInput) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const collector_id_opaque_array = opacifyTupleElements(CollectorId, &collector_id);
+        const collector_id_opaque_tuple: []const Opaque = &collector_id_opaque_array;
+
+        const query_1_opaque_array = opacifyVectorElements(3, Float, &query[0]);
+        const query_3_opaque_array = opacifyTupleElements(FilterInfo, &query[2]);
+        const query_5_opaque_array = opacifyTupleElements(BodyId, &query[4]);
+
+        const query_1_opaque_vector: []const Opaque = &query_1_opaque_array;
+        const query_3_opaque_vector: []const Opaque = &query_3_opaque_array;
+        const query_5_opaque_vector: []const Opaque = &query_5_opaque_array;
+
+        const query_opaque_tuple: []const Opaque = &.{
+            opacify(&query_1_opaque_vector),
+            opacify(&query[1]),
+            opacify(&query_3_opaque_vector),
+            opacify(&query[3]),
+            opacify(&query_5_opaque_vector),
+        };
+
+        return castOpaque(Result, point_proximity_with_collector_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_PointProximityWithCollector"),
+            &id_opaque_tuple,
+            &collector_id_opaque_tuple,
+            &query_opaque_tuple,
+        ));
     }
-    pub fn getNextTriggerEvent(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_GetNextTriggerEvent", .{ a, b });
+
+    /// Perform the shape proximity described by `query` against the bodies added to the world, storing the results in the collector.
+    /// Collector will be cleared of any previous results.
+    pub fn shapeProximityWithCollector(self: *const @This(), id: WorldId, collector_id: CollectorId, query: ShapeProximityInput) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const collector_id_opaque_array = opacifyTupleElements(CollectorId, &collector_id);
+        const collector_id_opaque_tuple: []const Opaque = &collector_id_opaque_array;
+
+        const query_1_opaque_array = opacifyTupleElements(ShapeId, &query[0]);
+        const query_2_opaque_array = opacifyVectorElements(3, Float, &query[1]);
+        const query_3_opaque_array = opacifyVectorElements(4, Float, &query[2]);
+        const query_6_opaque_array = opacifyTupleElements(BodyId, &query[5]);
+
+        const query_1_opaque_vector: []const Opaque = &query_1_opaque_array;
+        const query_2_opaque_vector: []const Opaque = &query_2_opaque_array;
+        const query_3_opaque_vector: []const Opaque = &query_3_opaque_array;
+        const query_6_opaque_vector: []const Opaque = &query_6_opaque_array;
+
+        const query_opaque_tuple: []const Opaque = &.{
+            opacify(&query_1_opaque_vector),
+            opacify(&query_2_opaque_vector),
+            opacify(&query_3_opaque_vector),
+            opacify(&query[3]),
+            opacify(&query[4]),
+            opacify(&query_6_opaque_vector),
+        };
+
+        return castOpaque(Result, shape_proximity_with_collector_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_ShapeProximityWithCollector"),
+            &id_opaque_tuple,
+            &collector_id_opaque_tuple,
+            &query_opaque_tuple,
+        ));
+    }
+
+    /// Perform a shape cast, as described by `query` against the bodies added to the world, storing the results in the collector.
+    /// Collector will be cleared of any previous results.
+    pub fn shapeCastWithCollector(self: *const @This(), id: WorldId, collector_id: CollectorId, query: ShapeCastInput) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const collector_id_opaque_array = opacifyTupleElements(CollectorId, &collector_id);
+        const collector_id_opaque_tuple: []const Opaque = &collector_id_opaque_array;
+
+        const query_1_opaque_array = opacifyTupleElements(ShapeId, &query[0]);
+        const query_2_opaque_array = opacifyVectorElements(4, Float, &query[1]);
+        const query_3_opaque_array = opacifyVectorElements(3, Float, &query[2]);
+        const query_4_opaque_array = opacifyVectorElements(3, Float, &query[3]);
+        const query_6_opaque_array = opacifyTupleElements(BodyId, &query[5]);
+
+        const query_1_opaque_vector: []const Opaque = &query_1_opaque_array;
+        const query_2_opaque_vector: []const Opaque = &query_2_opaque_array;
+        const query_3_opaque_vector: []const Opaque = &query_3_opaque_array;
+        const query_4_opaque_vector: []const Opaque = &query_4_opaque_array;
+        const query_6_opaque_vector: []const Opaque = &query_6_opaque_array;
+
+        const query_opaque_tuple: []const Opaque = &.{
+            opacify(&query_1_opaque_vector),
+            opacify(&query_2_opaque_vector),
+            opacify(&query_3_opaque_vector),
+            opacify(&query_4_opaque_vector),
+            opacify(&query[4]),
+            opacify(&query_6_opaque_vector),
+        };
+
+        return castOpaque(Result, shape_cast_with_collector_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_ShapeCastWithCollector"),
+            &id_opaque_tuple,
+            &collector_id_opaque_tuple,
+            &query_opaque_tuple,
+        ));
+    }
+
+    /// Simulate the world and advance time by `timestep` seconds.
+    pub fn step(self: *const @This(), id: WorldId, timestep: Float) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, step_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_Step"),
+            &id_opaque_tuple,
+            &timestep,
+        ));
+    }
+
+    /// Configure the ideal delta time which you intend to call `world.step`. Defaults to 1/60.
+    /// If the delta time passed to the world step differs from this amount, the solver parameters
+    /// will be automatically adjusted, to attempt to maintain a similar effective solver stiffness.
+    /// To disable this behaviour, set this value to zero.
+    pub fn setIdealStepTime(self: *const @This(), id: WorldId, delta_time: Float) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_ideal_step_time_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_SetIdealStepTime"),
+            &id_opaque_tuple,
+            &delta_time,
+        ));
+    }
+
+    /// Configure the maximum speed an individual body may have.
+    pub fn setSpeedLimit(self: *const @This(), id: WorldId, max_linear_velocity: Float, max_angular_velocity: Float) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_speed_limit_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_SetSpeedLimit"),
+            &id_opaque_tuple,
+            &max_linear_velocity,
+            &max_angular_velocity,
+        ));
+    }
+
+    /// Retrieve the maximum speed an individual body may have.
+    pub fn getSpeedLimit(self: *const @This(), id: WorldId) FloatPairResult {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(FloatPairResult, get_speed_limit_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetSpeedLimit"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Get the first collision event generated by the previous world step.
+    pub fn getCollisionEvents(self: *const @This(), id: WorldId) InternalHandleResult {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(InternalHandleResult, get_collision_events_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetCollisionEvents"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Get the next collision event, following `previous_event`.
+    pub fn getNextCollisionEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
+        return castOpaque(u32, get_next_collision_event_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetNextCollisionEvent"),
+            &world,
+            &previous_event,
+        ));
+    }
+
+    /// Get the first trigger event generated by the previous world step.
+    pub fn getTriggerEvents(self: *const @This(), id: WorldId) InternalHandleResult {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(InternalHandleResult, get_trigger_events_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetTriggerEvents"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Get the first trigger event generated by the previous world step.
+    pub fn getNextTriggerEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
+        return castOpaque(u32, get_next_trigger_event_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetNextTriggerEvent"),
+            &world,
+            &previous_event,
+        ));
     }
 
     const TypeInstance = Emscripten.Bind.Type.Instance;
@@ -1257,15 +1639,13 @@ embind_temp_arena: heap.ArenaAllocator,
 /// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
 embind_temp_allocator: mem.Allocator,
 
-const raw_buf = @embedFile("binary/x86_64/HavokPhysics.aot");
+const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");
 
 const stack_size: u32 = 64 * 1024;
 
 const heap_size: u32 = 1073741824;
 
-fn abort_js(_: wamr.wasm_exec_env_t) callconv(.c) void {
-    log.err("aborted", .{});
-}
+fn abort_js(_: wamr.wasm_exec_env_t) callconv(.c) void {}
 
 fn emscripten_get_heap_max(_: wamr.wasm_exec_env_t) callconv(.c) i32 {
     return heap_size;
@@ -1285,10 +1665,6 @@ fn emscripten_get_now(exec_env: wamr.wasm_exec_env_t) callconv(.c) f64 {
 
 fn emscripten_get_now_is_monotonic(_: wamr.wasm_exec_env_t) callconv(.c) i32 {
     return 1;
-}
-
-fn unimplemented(src: builtin.SourceLocation) void {
-    log.err("unimplemented function called: {s}", .{src.fn_name});
 }
 
 fn readLatin1String(physics: *HavokPhysics, ptr: u32) ![]u8 {
@@ -2336,25 +2712,15 @@ fn embind_finalize_value_array(
         };
 }
 
-fn emval_get_method_caller(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32) callconv(.c) void {
-    unimplemented(@src());
-}
+fn emval_get_method_caller(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32) callconv(.c) void {}
 
-fn emval_call_method(_: wamr.wasm_exec_env_t, _: i32, _: i32) callconv(.c) void {
-    unimplemented(@src());
-}
+fn emval_call_method(_: wamr.wasm_exec_env_t, _: i32, _: i32) callconv(.c) void {}
 
-fn emval_decref(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {
-    unimplemented(@src());
-}
+fn emval_decref(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {}
 
-fn emval_run_destructors(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {
-    unimplemented(@src());
-}
+fn emval_run_destructors(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {}
 
-fn fd_write(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32, _: i32) callconv(.c) void {
-    unimplemented(@src());
-}
+fn fd_write(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32, _: i32) callconv(.c) void {}
 
 pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     var physics = try allocator.create(HavokPhysics);
@@ -2363,7 +2729,7 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     physics.* = .{
         .allocator = allocator,
 
-        .aot_buf = try allocator.alignedAlloc(u8, .@"8", raw_buf.len), // Change alignment for WAMR
+        .aot_buf = try allocator.alignedAlloc(u8, .@"8", aot_buf_raw.len), // Change alignment for WAMR
 
         .heap_buf = try allocator.alignedAlloc(u8, .@"8", heap_size),
 
@@ -2393,7 +2759,7 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     };
 
     // Copy buf onto aot_buf
-    @memcpy(physics.aot_buf, raw_buf);
+    @memcpy(physics.aot_buf, aot_buf_raw);
 
     physics.embind_arena = .init(allocator);
     physics.embind_allocator = physics.embind_arena.allocator();

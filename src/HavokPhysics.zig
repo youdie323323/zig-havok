@@ -1,5 +1,8 @@
 const HavokPhysics = @This();
 
+/// Shared float type between physical methods.
+pub const Float = f32;
+
 const Emscripten = struct {
     pub const Bind = struct {
         pub const Type = struct {
@@ -8,7 +11,7 @@ const Emscripten = struct {
             pub const Kind = enum {
                 void,
                 bool,
-                integer,
+                int,
                 float,
                 bigint,
                 std_string,
@@ -40,7 +43,7 @@ const Emscripten = struct {
                 name: []const u8,
                 kind: Kind,
 
-                /// Physics instance to use WAMR.
+                /// Physics instance to use in WAMR.
                 physics: *HavokPhysics,
 
                 destructor: ?Destructor = null,
@@ -129,15 +132,17 @@ const Emscripten = struct {
                             else
                                 false,
                         ),
-                        .integer => opacifyAlloc(
-                            u64,
+                        .int => opacifyAlloc(
+                            u32,
                             physics.embind_temp_allocator,
-                            if (self.integer_bitshift) |bitshift|
-                                (wire.value << bitshift) >> bitshift
-                            else
-                                wire.value,
+                            @intCast(
+                                if (self.integer_bitshift) |bitshift|
+                                    (wire.value << bitshift) >> bitshift
+                                else
+                                    wire.value,
+                            ),
                         ),
-                        .float => opacifyAlloc(f64, physics.embind_temp_allocator, @floatFromInt(wire.value)),
+                        .float => opacifyAlloc(Float, physics.embind_temp_allocator, @floatFromInt(wire.value)),
                         .bigint => opacifyAlloc(u64, physics.embind_temp_allocator, wire.value),
                         .@"enum" => opacifyAlloc(u32, physics.embind_temp_allocator, @intCast(wire.value)),
                         .std_string => blk: {
@@ -203,7 +208,9 @@ const Emscripten = struct {
                                 const getter = element.getter;
                                 const getter_context = element.getter_context;
 
-                                opaques[i] = getter_return_type.fromWire(.{ .value = physics.callSimple(getter, .{ getter_context, ptr }) catch unreachable });
+                                opaques[i] = getter_return_type.fromWire(.{
+                                    .value = physics.callSimple(getter, .{ getter_context, ptr }) catch unreachable,
+                                });
                             }
 
                             _ = physics.callSimple(self.destructor.?.wasm, .{ptr}) catch unreachable;
@@ -253,9 +260,8 @@ const Emscripten = struct {
                             else
                                 self.false_value.?,
                         ) },
-                        .integer, .@"enum" => .{ .value = castOpaque(u32, @"opaque") },
-                        .float => .{ .value = @bitCast(castOpaque(f64, @"opaque")), .is_multiple = true },
-                        .bigint => .{ .value = @bitCast(castOpaque(i64, @"opaque")), .is_multiple = true },
+                        .int, .float, .@"enum" => .{ .value = castOpaque(u32, @"opaque") },
+                        .bigint => .{ .value = @bitCast(castOpaque(u64, @"opaque")), .is_multiple = true },
                         .std_string => blk: {
                             const slice = castOpaque([]const u8, @"opaque");
                             const slice_len_u32: u32 = @intCast(slice.len);
@@ -330,10 +336,10 @@ const Emscripten = struct {
 
                             const ptr = physics.callVoid(self.tuple_constructor) catch unreachable;
 
-                            const opaques = castOpaque([]Opaque, @"opaque");
+                            const opaques = castOpaque([]const Opaque, @"opaque");
 
                             for (elements, 0..) |element, i| {
-                                const setter_arg_type = converters[i + elements_len];
+                                const setter_arg_type = converters[elements_len + i];
                                 const setter = element.setter;
                                 const setter_context = element.setter_context;
 
@@ -455,16 +461,16 @@ fn ExternalizeTuple(comptime Tuple: type) type {
 
 /// Basic free destructor for pointer.
 fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
-    _ = physics.callSimple("free", .{ptr}) catch unreachable;
+    _ = physics.callExportedSimple("free", .{ptr}) catch unreachable;
 }
 
-const Vector = @Vector(3, f64);
-const Quaternion = @Vector(4, f64);
-const Rotation = @Vector(3, Vector);
-const QTransform = struct { Vector, Quaternion };
-const QSTransform = struct { Vector, Quaternion, Vector };
-const Transform = struct { Vector, Rotation };
-const Aabb = struct { Vector, Vector };
+const Vector3 = @Vector(3, Float);
+const Quaternion = @Vector(4, Float);
+const Rotation = @Vector(3, Vector3);
+const QTransform = struct { Vector3, Quaternion };
+const QSTransform = struct { Vector3, Quaternion, Vector3 };
+const Transform = struct { Vector3, Rotation };
+const Aabb = struct { Vector3, Vector3 };
 
 fn opacifyVectorElements(
     comptime len: comptime_int,
@@ -518,22 +524,22 @@ const MaterialCombine = enum(u32) {
 
 const MassProperties = struct {
     /// Center of mass.
-    Vector,
+    Vector3,
     /// Mass.
-    f64,
+    Float,
     /// Inertia for mass of 1.
-    Vector,
+    Vector3,
     /// Inertia orientation.
     Quaternion,
 };
 
 const Material = struct {
     /// Static friction.
-    f64,
+    Float,
     /// Dynamic friction.
-    f64,
+    Float,
     /// Restitution.
-    f64,
+    Float,
     /// Friction combine mode.
     MaterialCombine,
     /// Restitution combine mode.
@@ -542,9 +548,9 @@ const Material = struct {
 
 const FilterInfo = struct {
     /// Membership mask.
-    f64,
+    u32,
     /// Collision mask.
-    f64,
+    u32,
 };
 
 /// You must get function_index from (physics.embind_invoker_function_indices).
@@ -619,13 +625,13 @@ const Shape = struct {
     const CreaterReturn = struct { Result, ShapeId };
     const GetFilterInfoReturn = struct { Result, FilterInfo };
     const GetMaterialReturn = struct { Result, Material };
-    const GetDensityReturn = struct { Result, f64 };
+    const GetDensityReturn = struct { Result, Float };
     const GetNumChildrenReturn = struct { Result, usize };
     const GetChildShapeReturn = struct { Result, ShapeId };
     const GetTypeReturn = struct { Result, Type };
     const GetBoundingBoxReturn = struct { Result, Aabb };
     const BuildMassPropertiesReturn = struct { Result, MassProperties };
-    const PathIteratorGetNextReturn = struct { Result, PathIterator, f64 };
+    const PathIteratorGetNextReturn = struct { Result, PathIterator, Float };
     const CreateDebugDisplayGeometryReturn = struct { Result, DebugGeometryId };
 
     pub var create_sphere_impl = &noopImpl;
@@ -669,8 +675,9 @@ const Shape = struct {
     pub var create_debug_display_geometry_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
-    pub inline fn createSphere(self: *const @This(), center: Vector, radius: f64) CreaterReturn {
-        const center_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &center);
+    pub inline fn createSphere(self: *const @This(), center: Vector3, radius: Float) CreaterReturn {
+        const center_opaque_array = opacifyVectorElements(3, Float, &center);
+        const center_opaque_vector: []const Opaque = &center_opaque_array;
 
         return castOpaque(CreaterReturn, create_sphere_impl(
             self.physics,
@@ -681,9 +688,12 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a capsule.
-    pub inline fn createCapsule(self: *const @This(), point_a: Vector, point_b: Vector, radius: f64) CreaterReturn {
-        const point_a_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
-        const point_b_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
+    pub inline fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
+        const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
+        const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
+
+        const point_b_opaque_array = opacifyVectorElements(3, Float, &point_b);
+        const point_b_opaque_vector: []const Opaque = &point_b_opaque_array;
 
         return castOpaque(CreaterReturn, create_capsule_impl(
             self.physics,
@@ -695,9 +705,12 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a cylinder.
-    pub inline fn createCylinder(self: *const @This(), point_a: Vector, point_b: Vector, radius: f64) CreaterReturn {
-        const point_a_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_a);
-        const point_b_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &point_b);
+    pub inline fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
+        const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
+        const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
+
+        const point_b_opaque_array = opacifyVectorElements(3, Float, &point_b);
+        const point_b_opaque_vector: []const Opaque = &point_b_opaque_array;
 
         return castOpaque(CreaterReturn, create_cylinder_impl(
             self.physics,
@@ -712,15 +725,20 @@ const Shape = struct {
     pub inline fn createBox(
         self: *const @This(),
         /// Position of the box center (in shape space).
-        center: Vector,
+        center: Vector3,
         /// Orientation of the box (in shape space).
         rotation: Quaternion,
         /// Total size of the box.
-        extents: Vector,
+        extents: Vector3,
     ) CreaterReturn {
-        const center_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &center);
-        const rotation_opaque_vector: []const Opaque = &opacifyVectorElements(4, f64, &rotation);
-        const extents_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &extents);
+        const center_opaque_array = opacifyVectorElements(3, Float, &center);
+        const center_opaque_vector: []const Opaque = &center_opaque_array;
+
+        const rotation_opaque_array = opacifyVectorElements(4, Float, &rotation);
+        const rotation_opaque_vector: []const Opaque = &rotation_opaque_array;
+
+        const extents_opaque_array = opacifyVectorElements(3, Float, &extents);
+        const extents_opaque_vector: []const Opaque = &extents_opaque_array;
 
         return castOpaque(CreaterReturn, create_box_impl(
             self.physics,
@@ -738,7 +756,12 @@ const Shape = struct {
         vertices: u32,
         num_vertices: usize,
     ) CreaterReturn {
-        return castOpaque(CreaterReturn, create_convex_hull_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"), &vertices, &num_vertices));
+        return castOpaque(CreaterReturn, create_convex_hull_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"),
+            &vertices,
+            &num_vertices,
+        ));
     }
 
     /// Creates a geometry representing the surface of a mesh.
@@ -751,7 +774,14 @@ const Shape = struct {
         triangles: u32,
         num_triangles: usize,
     ) CreaterReturn {
-        return castOpaque(CreaterReturn, create_mesh_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"), &vertices, &num_vertices, &triangles, &num_triangles));
+        return castOpaque(CreaterReturn, create_mesh_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"),
+            &vertices,
+            &num_vertices,
+            &triangles,
+            &num_triangles,
+        ));
     }
 
     /// Creates a geometry representing a height map.
@@ -761,12 +791,13 @@ const Shape = struct {
         num_z_samples: usize,
         /// X and Z components should be converted from integer space to shape space.
         /// Y supplies a scaling factor for the height.
-        scale: Vector,
+        scale: Vector3,
         /// Should be a buffer of floats, of size (num_x_samples * num_z_samples), describing heights at (x, z) of
         /// [(0, 0), (1, 0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
         heights: u32,
     ) CreaterReturn {
-        const scale_opaque_vector: []const Opaque = &opacifyVectorElements(3, f64, &scale);
+        const scale_opaque_array = opacifyVectorElements(3, Float, &scale);
+        const scale_opaque_vector: []const Opaque = &scale_opaque_array;
 
         return castOpaque(CreaterReturn, create_height_field_impl(
             self.physics,
@@ -781,9 +812,11 @@ const Shape = struct {
     /// Sets the collision info for the shape to the information in `filter_info`.
     /// This can prevent collisions between shapes and queries, depending on how you have configured the filter.
     pub inline fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
-        const id_opaque_tuple: []const Opaque = &opacifyTupleElements(ShapeId, &id);
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        const filter_info_opaque_tuple: []const Opaque = &opacifyTupleElements(FilterInfo, &filter_info);
+        const filter_info_opaque_array = opacifyTupleElements(FilterInfo, &filter_info);
+        const filter_info_opaque_tuple: []const Opaque = &filter_info_opaque_array;
 
         return castOpaque(Result, set_filter_info_impl(
             self.physics,
@@ -795,7 +828,14 @@ const Shape = struct {
 
     /// Get the collision filter info for a shape.
     pub inline fn getFilterInfo(self: *const @This(), id: ShapeId) GetFilterInfoReturn {
-        return castOpaque(GetFilterInfoReturn, get_filter_info_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")), &id));
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(GetFilterInfoReturn, get_filter_info_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")),
+            &id_opaque_tuple,
+        ));
     }
 
     /// Sets the material of the shape to the provided material.
@@ -809,7 +849,7 @@ const Shape = struct {
     }
 
     /// Set the density of the shape. Used when calling `buildMassProperties`.
-    pub inline fn setDensity(self: *const @This(), id: ShapeId, density: f64) Result {
+    pub inline fn setDensity(self: *const @This(), id: ShapeId, density: Float) Result {
         return castOpaque(Result, set_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")), &id, &density));
     }
 
@@ -894,10 +934,12 @@ const Shape = struct {
         return castOpaque(CreateDebugDisplayGeometryReturn, create_debug_display_geometry_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")), &id));
     }
 
-    const Opaque = Emscripten.Bind.Type.Instance.Opaque;
+    const Instance = Emscripten.Bind.Type.Instance;
 
-    const castOpaque = Emscripten.Bind.Type.Instance.castOpaque;
-    const opacify = Emscripten.Bind.Type.Instance.opacify;
+    const Opaque = Instance.Opaque;
+
+    const castOpaque = Instance.castOpaque;
+    const opacify = Instance.opacify;
 };
 
 const World = struct {
@@ -1454,7 +1496,7 @@ fn embind_register_integer(
 
         instance.* = .{
             .name = name,
-            .kind = .integer,
+            .kind = .int,
 
             .physics = physics,
         };
@@ -2037,7 +2079,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 fn createMethodImpl(
     self: *HavokPhysics,
     /// Must not be deinited after this function called.
-    /// Parent's array list deinited when arena's deinit called.
+    /// Parent's array list will be deinited when arena's deinit is called.
     type_instances: []?*const Emscripten.Bind.Type.Instance,
     invoker: wamr.wasm_function_inst_t,
     function_index: usize,
@@ -2079,6 +2121,7 @@ fn createMethodImpl(
             }
         } else return error.MissingArgumentType;
 
+    // Register context
     self.embind_invoker_contexts[function_index] = context;
 
     return createMethodImplInner(try createMethodSignature(type_instances, returns, is_async));
@@ -2124,7 +2167,7 @@ fn embind_register_function(
 
         register_context.* = .{
             .name = name,
-            .invoker = physics.getFunctionIndirect(@intCast(invoker_index)) catch {
+            .invoker = physics.getIndirectFunction(@intCast(invoker_index)) catch {
                 allocator.free(name);
 
                 allocator.destroy(register_context);
@@ -2217,12 +2260,12 @@ fn embind_register_value_array(
         physics.embind_tuple_registry.put(type_id, .{
             .name = name,
 
-            .constructor = physics.getFunctionIndirect(@intCast(constructor_index)) catch {
+            .constructor = physics.getIndirectFunction(@intCast(constructor_index)) catch {
                 allocator.free(name);
 
                 return;
             },
-            .destructor = physics.getFunctionIndirect(@intCast(destructor_index)) catch {
+            .destructor = physics.getIndirectFunction(@intCast(destructor_index)) catch {
                 allocator.free(name);
 
                 return;
@@ -2249,11 +2292,11 @@ fn embind_register_value_array_element(
         if (physics.embind_tuple_registry.getPtr(type_id)) |tuple|
             tuple.elements.append(.{
                 .getter_return_type = getter_return_type,
-                .getter = physics.getFunctionIndirect(@intCast(getter_index)) catch return,
+                .getter = physics.getIndirectFunction(@intCast(getter_index)) catch return,
                 .getter_context = @intCast(getter_context),
 
                 .setter_arg_type = setter_arg_type,
-                .setter = physics.getFunctionIndirect(@intCast(setter_index)) catch return,
+                .setter = physics.getIndirectFunction(@intCast(setter_index)) catch return,
                 .setter_context = @intCast(setter_context),
             }) catch return;
 }
@@ -2486,7 +2529,7 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     physics.embind_arena = .init(allocator);
     physics.embind_allocator = physics.embind_arena.allocator();
 
-    physics.embind_temp_arena = .init(allocator);
+    physics.embind_temp_arena = .init(heap.page_allocator);
     physics.embind_temp_allocator = physics.embind_temp_arena.allocator();
 
     for (function_names, 0..) |function_name, i| // Add function indices
@@ -2670,8 +2713,6 @@ pub fn registerType(
                 );
         }
     }
-
-    log.debug("registered type id: {d}, name: {s}, kind: {any}", .{ id, instance.name, instance.kind });
 }
 
 const function_names = [_][]const u8{
@@ -2843,22 +2884,22 @@ const cached_function_indices: CachedFunctionIndices = blk: {
 };
 
 pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
-    var argv: [32]u32 = undefined;
+    var argv: [16]u32 = undefined;
     var argv_len: u32 = 0;
 
     for (args) |arg| {
-        const slots: u32 =
-            if (arg.is_multiple)
-                2
-            else
-                1;
+        const is_multiple = arg.is_multiple;
 
         argv[argv_len] = @truncate(arg.value);
 
-        if (arg.is_multiple)
+        if (is_multiple)
             argv[argv_len + 1] = @truncate(arg.value >> 32);
 
-        argv_len += slots;
+        argv_len +=
+            if (is_multiple)
+                2
+            else
+                1;
     }
 
     if (!wamr.wasm_runtime_call_wasm(
@@ -2875,6 +2916,10 @@ pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: []co
     }
 
     return argv[0];
+}
+
+pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+    return self.call(try self.getExportedFunction(name), args);
 }
 
 pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
@@ -2901,7 +2946,11 @@ pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args
     return argv[0];
 }
 
-/// You must use this function if your args is empty.
+pub fn callExportedSimple(self: *HavokPhysics, comptime name: [:0]const u8, args: anytype) !u32 {
+    return self.callSimple(try self.getExportedFunction(name), args);
+}
+
+/// You must use this function if your arguments is empty.
 pub fn callVoid(self: *HavokPhysics, function: wamr.wasm_function_inst_t) !u32 {
     var argv: [1]u32 = undefined;
 
@@ -2921,11 +2970,16 @@ pub fn callVoid(self: *HavokPhysics, function: wamr.wasm_function_inst_t) !u32 {
     return argv[0];
 }
 
-pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+/// You must use this function if your function is exported and arguments is empty.
+pub fn callExportedVoid(self: *HavokPhysics, comptime name: [:0]const u8) !u32 {
+    return self.callVoid(try self.getExportedFunction(name));
+}
+
+pub fn getExportedFunction(self: *HavokPhysics, comptime name: [:0]const u8) !wamr.wasm_function_inst_t {
     const function_index = comptime cached_function_indices.get(name) orelse
         @compileError(fmt.comptimePrint("uncached function name: {s}", .{name}));
 
-    const function = self.cached_functions[function_index] orelse blk: {
+    return self.cached_functions[function_index] orelse blk: {
         const function = wamr.wasm_runtime_lookup_function(self.module_inst, name.ptr);
         if (function == null)
             return error.FunctionNotFound;
@@ -2934,11 +2988,9 @@ pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: []co
 
         break :blk function;
     };
-
-    return self.call(function, args);
 }
 
-pub fn getFunctionIndirect(self: *HavokPhysics, index: u32) !wamr.wasm_function_inst_t {
+pub fn getIndirectFunction(self: *HavokPhysics, index: u32) !wamr.wasm_function_inst_t {
     return self.cached_indirect_functions.get(index) orelse blk: {
         const function = wamr.wasm_table_get_func_inst(self.module_inst, &self.table_inst, index);
 

@@ -10,13 +10,20 @@ pub fn main() !void {
     {
         defer physics.free();
 
-        const result, const world_id = physics.world.create();
+        {
+            const result, const world_id = physics.world.create();
 
-        log.info("{any}, {any}", .{ result, world_id });
+            log.info("{any}, {any}", .{ result, world_id });
+        }
 
-        _, const shape_id_capsule = physics.shape.createCapsule(.{ 1, 1, 1 }, .{ 5, 5, 5 }, 10);
+        {
+            const result, const sphere_shape_id = physics.shape.createSphere(.{ 5, 5, 5 }, 0.5);
 
-        _ = physics.shape.setFilterInfo(shape_id_capsule, .{ 2, 2 });
+            log.info("{any}, {any}", .{ result, sphere_shape_id });
+
+            log.info("{any}", .{physics.shape.setFilterInfo(sphere_shape_id, .{ 1, 1 })});
+            log.info("{any}", .{physics.shape.getFilterInfo(sphere_shape_id)});
+        }
     }
 }
 

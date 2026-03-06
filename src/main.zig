@@ -30,6 +30,7 @@ pub fn main() !void {
             log.info("{any}", .{physics.shape.getDensity(sphere_id)});
 
             const result_2, const container = physics.shape.createContainer();
+            defer _ = physics.shape.release(container);
 
             log.info("{any}, {any}", .{ result_2, container });
 
@@ -40,6 +41,10 @@ pub fn main() !void {
             });
 
             log.info("{any}", .{result_3});
+
+            const result_4, const container_num_children = physics.shape.getNumChildren(container);
+
+            log.info("{any}, {d}", .{ result_4, container_num_children });
         }
     }
 }

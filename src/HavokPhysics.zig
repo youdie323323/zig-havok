@@ -14,26 +14,28 @@ const Emscripten = struct {
                 int,
                 float,
                 bigint,
-                std_string,
-                std_wstring,
-                @"enum",
+                // std_string,  // Not used in Havok Physics
+                // std_wstring, // Not used in Havok Physics
+                @"enum", // Can be treated as int?
                 tuple,
-                // emval,
-
-                memory_view,
+                // emval,       // Not used in Havok Physics
+                // memory_view, // Not used in Havok Physics
             };
 
             pub const Instance = struct {
-                pub const Destructor = union(enum) {
-                    native: *const fn (physics: *HavokPhysics, ...) callconv(.c) void,
-                    wasm: wamr.wasm_function_inst_t,
-                };
+                // pub const Destructor = union(enum) {
+                //     native: *const fn (physics: *HavokPhysics, ...) callconv(.c) void,
+                //     wasm: wamr.wasm_function_inst_t,
+                // };
+
+                /// In Havok Physics we can assume we only use wasm destructor.
+                pub const Destructor = wamr.wasm_function_inst_t;
 
                 pub const Wire = struct {
                     value: u64,
                     is_multiple: bool = false,
 
-                    fn u32ize(self: Wire) u32 {
+                    pub fn simplify(self: Wire) u32 {
                         return @intCast(self.value);
                     }
                 };
@@ -46,7 +48,7 @@ const Emscripten = struct {
                 /// Physics instance to use in WAMR.
                 physics: *HavokPhysics,
 
-                destructor: ?Destructor = null,
+                destructor: Destructor = null,
 
                 /// Not only purposive for one kind. General-meant size.
                 size: ?u32 = null,
@@ -54,9 +56,7 @@ const Emscripten = struct {
                 true_value: ?u32 = null,
                 false_value: ?u32 = null,
 
-                integer_bitshift: ?u5 = null,
-
-                data_type: ?u8 = null,
+                is_signed: bool = false,
 
                 tuple_constructor: wamr.wasm_function_inst_t = null,
                 tuple_elements: ?Tuple.Elements.Slice = null,
@@ -68,9 +68,27 @@ const Emscripten = struct {
                 // };
 
                 fn castOpaqueInner(comptime T: type, @"opaque": Opaque) T {
+                    return switch (@typeInfo(T)) {
+                        .bool => @intFromPtr(@"opaque") != 0,
+                        .int => |info| if (comptime (info.bits <= 32))
+                            @bitCast(@as(u32, @truncate(@intFromPtr(@"opaque"))))
+                        else if (comptime (info.bits == 64 and @sizeOf(usize) == 8))
+                            @bitCast(@as(u64, @intCast(@intFromPtr(@"opaque"))))
+                        else
+                            castOpaqueSimplex(T, @"opaque"),
+                        .float => @bitCast(@as(u32, @truncate(@intFromPtr(@"opaque")))),
+                        .@"enum" => @enumFromInt(@as(u32, @truncate(@intFromPtr(@"opaque")))),
+
+                        else => castOpaqueSimplex(T, @"opaque"),
+                    };
+                }
+
+                pub fn castOpaqueSimplex(comptime T: type, @"opaque": Opaque) T {
                     return @as(*allowzero const T, @ptrCast(@alignCast(@"opaque"))).*;
                 }
 
+                /// Note: this function must be called by only outside of this struct.
+                /// The simplex version of this are not implemented.
                 pub fn castOpaque(comptime T: type, @"opaque": Opaque) T {
                     return switch (@typeInfo(T)) {
                         .@"struct" => |struct_info| if (struct_info.is_tuple) blk: {
@@ -103,91 +121,41 @@ const Emscripten = struct {
                     return @ptrCast(ptr);
                 }
 
-                fn createSliceOpaque(
-                    comptime T: type,
-                    allocator: mem.Allocator,
-                    raw_ptr: *anyopaque,
-                    size: u32,
-                ) Opaque {
-                    const container = allocator.create([]const T) catch unreachable;
-
-                    container.* = @as([*]const T, @ptrCast(@alignCast(raw_ptr)))[0..size];
-
-                    return @ptrCast(container);
-                }
-
                 /// Caller owns the return.
                 pub fn fromWire(self: *const Instance, wire: Wire) Opaque {
                     const physics = self.physics;
 
                     return switch (self.kind) {
                         .void => @ptrFromInt(0),
-                        .bool => opacifyAlloc(
-                            bool,
-                            physics.embind_temp_allocator,
-                            if (wire.value != 0)
-                                true
-                            else
-                                false,
-                        ),
-                        .int => opacifyAlloc(
-                            u32,
-                            physics.embind_temp_allocator,
-                            @intCast(
-                                if (self.integer_bitshift) |bitshift|
-                                    (wire.value << bitshift) >> bitshift
-                                else
-                                    wire.value,
-                            ),
-                        ),
-                        .float => opacifyAlloc(Float, physics.embind_temp_allocator, @bitCast(@as(u32, @intCast(wire.value)))), // Definitely u32
-                        .bigint => opacifyAlloc(u64, physics.embind_temp_allocator, wire.value),
-                        .@"enum" => opacifyAlloc(u32, physics.embind_temp_allocator, @intCast(wire.value)),
-                        .std_string => blk: {
-                            const ptr = wire.value;
+                        .bool => @ptrFromInt(@as(usize, if (wire.value != 0) 1 else 0)),
+                        .int => blk: {
+                            const value_u32: u32 = @truncate(wire.value);
 
-                            const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
-                            const raw_payload_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr + 4) orelse unreachable;
+                            const size = self.size.?;
 
-                            const allocator = physics.embind_temp_allocator;
+                            const final_u32: u32 = if (self.is_signed) blk_inner: {
+                                const value_i32: i32 = @bitCast(value_u32);
 
-                            const native_payload_ptr: [*]const u8 = @ptrCast(raw_payload_ptr);
-
-                            const length = castOpaque(u32, raw_ptr);
-
-                            const result = allocator.dupe(u8, native_payload_ptr[0..length]) catch unreachable;
-
-                            freeDesturctor(physics, @intCast(ptr));
-
-                            break :blk @ptrCast(&result);
-                        },
-                        .std_wstring => blk: {
-                            const ptr = wire.value;
-
-                            const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
-                            const raw_payload_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr + 4) orelse unreachable;
-
-                            const allocator = physics.embind_temp_allocator;
-
-                            const native_payload_ptr: [*]const u8 = @ptrCast(raw_payload_ptr);
-
-                            const length = castOpaque(u32, raw_ptr);
-
-                            const char_size = self.size.?;
-
-                            const byte_len = length * char_size;
-
-                            const result = allocator.dupe(u8, native_payload_ptr[0..byte_len]) catch unreachable;
-
-                            const slice_opaque: Opaque = switch (char_size) {
-                                2 => @ptrCast(@as([*]const u16, @ptrCast(@alignCast(result.ptr)))[0..length]),
-                                else => @ptrCast(@as([*]const u32, @ptrCast(@alignCast(result.ptr)))[0..length]),
+                                break :blk_inner @bitCast(@as(i32, switch (size) {
+                                    1 => @intCast(@as(i8, @truncate(value_i32))),
+                                    2 => @intCast(@as(i16, @truncate(value_i32))),
+                                    else => value_i32,
+                                }));
+                            } else switch (size) {
+                                1 => value_u32 & 0xFF,
+                                2 => value_u32 & 0xFFFF,
+                                else => value_u32,
                             };
 
-                            freeDesturctor(physics, @intCast(ptr));
-
-                            break :blk slice_opaque;
+                            break :blk @ptrFromInt(@as(usize, final_u32));
                         },
+                        .float, .@"enum" => @ptrFromInt(@as(usize, @truncate(wire.value))),
+                        .bigint => if (comptime (@sizeOf(usize) == 8))
+                            @ptrFromInt(@as(usize, @intCast(wire.value)))
+                        else
+                            opacifyAlloc(u64, physics.embind_temp_allocator, wire.value),
+                        // .std_string => @panic("std_string features are not implemented"),
+                        // .std_wstring => @panic("std_wstring features are not implemented"),
                         .tuple => blk: {
                             const ptr: u32 = @intCast(wire.value);
 
@@ -211,41 +179,12 @@ const Emscripten = struct {
                                 });
                             }
 
-                            _ = physics.callSimple(self.destructor.?.wasm, .{ptr}) catch unreachable;
+                            _ = physics.callSimple(self.destructor, .{ptr}) catch unreachable;
 
                             break :blk @ptrCast(opaques.ptr);
                         },
                         // .emval => @panic("emval features are not implemented"),
-                        .memory_view => blk: {
-                            const ptr = wire.value;
-
-                            const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
-
-                            const metadata: [*]const u32 = @ptrCast(@alignCast(raw_ptr));
-
-                            const size = metadata[0];
-                            const data_ptr = metadata[1];
-
-                            const raw_data_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, data_ptr) orelse unreachable;
-
-                            const allocator = physics.embind_temp_allocator;
-
-                            log.info("reaches", .{});
-
-                            break :blk switch (self.data_type.?) {
-                                0 => createSliceOpaque(i8, allocator, raw_data_ptr, size),
-                                1 => createSliceOpaque(u8, allocator, raw_data_ptr, size),
-                                2 => createSliceOpaque(i16, allocator, raw_data_ptr, size),
-                                3 => createSliceOpaque(u16, allocator, raw_data_ptr, size),
-                                4 => createSliceOpaque(i32, allocator, raw_data_ptr, size),
-                                5 => createSliceOpaque(u32, allocator, raw_data_ptr, size),
-                                6 => createSliceOpaque(f32, allocator, raw_data_ptr, size),
-                                7 => createSliceOpaque(f64, allocator, raw_data_ptr, size),
-                                8 => createSliceOpaque(i64, allocator, raw_data_ptr, size),
-                                9 => createSliceOpaque(u64, allocator, raw_data_ptr, size),
-                                else => unreachable,
-                            };
-                        },
+                        // .memory_view => @panic("memory_view features are not implemented"),
                     };
                 }
 
@@ -255,79 +194,15 @@ const Emscripten = struct {
                     return switch (self.kind) {
                         .void => .{ .value = 0 },
                         .bool => .{ .value = @intCast(
-                            if (castOpaque(bool, @"opaque"))
+                            if (castOpaqueSimplex(bool, @"opaque"))
                                 self.true_value.?
                             else
                                 self.false_value.?,
                         ) },
-                        .int, .float, .@"enum" => .{ .value = castOpaque(u32, @"opaque") },
-                        .bigint => .{ .value = @bitCast(castOpaque(u64, @"opaque")), .is_multiple = true },
-                        .std_string => blk: {
-                            const slice = castOpaque([]const u8, @"opaque");
-                            const slice_len_u32: u32 = @intCast(slice.len);
-
-                            const size: u32 = 4 + slice_len_u32 + 1;
-
-                            const ptr = physics.callExported("malloc", &.{.{ .value = size }}) catch unreachable;
-
-                            const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
-
-                            const len_ptr: *u32 = @ptrCast(@alignCast(raw_ptr));
-
-                            len_ptr.* = slice_len_u32;
-
-                            const data_ptr: [*]u8 = @ptrCast(raw_ptr);
-                            const payload = data_ptr + 4;
-
-                            @memcpy(payload[0..slice_len_u32], slice);
-                            payload[slice_len_u32] = 0;
-
-                            if (free_ptr)
-                                freeDesturctor(physics, ptr);
-
-                            break :blk .{ .value = ptr };
-                        },
-                        .std_wstring => blk: {
-                            const char_size = self.size.?;
-                            const char_size_equal_two = char_size == 2;
-
-                            const slice_len_u32: u32 = @intCast(
-                                if (char_size_equal_two)
-                                    castOpaque([]const u16, @"opaque").len
-                                else
-                                    castOpaque([]const u32, @"opaque").len,
-                            );
-
-                            const size = 4 + (slice_len_u32 * char_size) + char_size;
-
-                            const ptr = physics.callExported("malloc", &.{.{ .value = size }}) catch unreachable;
-
-                            const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr) orelse unreachable;
-
-                            const len_ptr: *u32 = @ptrCast(@alignCast(raw_ptr));
-
-                            len_ptr.* = slice_len_u32;
-
-                            const data_ptr: [*]u8 = @ptrCast(raw_ptr);
-                            const payload = data_ptr + 4;
-
-                            if (char_size_equal_two) {
-                                const wide_payload: [*]u16 = @ptrCast(@alignCast(payload));
-
-                                @memcpy(wide_payload[0..slice_len_u32], castOpaque([]const u16, @"opaque"));
-                                wide_payload[slice_len_u32] = 0;
-                            } else {
-                                const wide_payload: [*]u32 = @ptrCast(@alignCast(payload));
-
-                                @memcpy(wide_payload[0..slice_len_u32], castOpaque([]const u32, @"opaque"));
-                                wide_payload[slice_len_u32] = 0;
-                            }
-
-                            if (free_ptr)
-                                freeDesturctor(physics, ptr);
-
-                            break :blk .{ .value = ptr };
-                        },
+                        .int, .float, .@"enum" => .{ .value = castOpaqueSimplex(u32, @"opaque") },
+                        .bigint => .{ .value = @bitCast(castOpaqueSimplex(u64, @"opaque")), .is_multiple = true },
+                        // .std_string => @panic("std_string features are not implemented"),
+                        // .std_wstring => @panic("std_wstring features are not implemented"),
                         .tuple => blk: {
                             const elements = self.tuple_elements.?;
                             const elements_len = elements.len;
@@ -336,7 +211,7 @@ const Emscripten = struct {
 
                             const ptr = physics.callVoid(self.tuple_constructor) catch unreachable;
 
-                            const opaques = castOpaque([]const Opaque, @"opaque");
+                            const opaques = castOpaqueSimplex([]const Opaque, @"opaque");
 
                             for (elements, 0..) |element, i| {
                                 const setter_arg_type = converters[elements_len + i];
@@ -351,12 +226,12 @@ const Emscripten = struct {
                             }
 
                             if (free_ptr)
-                                _ = physics.callSimple(self.destructor.?.wasm, .{ptr}) catch unreachable;
+                                _ = physics.callSimple(self.destructor, .{ptr}) catch unreachable;
 
                             break :blk .{ .value = ptr };
                         },
                         // .emval => @panic("emval features are not implemented"),
-                        .memory_view => @panic("memory_view are not able to convert opaque to wire"),
+                        // .memory_view => @panic("memory_view are not able to convert opaque to wire"),
                     };
                 }
             };
@@ -612,7 +487,7 @@ const Shape = struct {
     const GetFilterInfoReturn = struct { Result, FilterInfo };
     const GetMaterialReturn = struct { Result, Material };
     const GetDensityReturn = struct { Result, Float };
-    const GetNumChildrenReturn = struct { Result, usize };
+    const GetNumChildrenReturn = struct { Result, u32 };
     const GetChildShapeReturn = struct { Result, ShapeId };
     const GetTypeReturn = struct { Result, Type };
     const GetBoundingBoxReturn = struct { Result, Aabb };
@@ -1064,12 +939,12 @@ const Shape = struct {
         ));
     }
 
-    const Instance = Emscripten.Bind.Type.Instance;
+    const TypeInstance = Emscripten.Bind.Type.Instance;
 
-    const Opaque = Instance.Opaque;
+    const Opaque = TypeInstance.Opaque;
 
-    const castOpaque = Instance.castOpaque;
-    const opacify = Instance.opacify;
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
 };
 
 const World = struct {
@@ -1614,10 +1489,11 @@ fn embind_register_integer(
             .kind = .int,
 
             .physics = physics,
-        };
 
-        if (min_range == 0) // You must ensure that the size is (0 <= size <= 4).
-            instance.integer_bitshift = @intCast(32 - size * 8);
+            .size = @intCast(size),
+
+            .is_signed = min_range < 0,
+        };
 
         physics.registerType(type_id, instance) catch {
             allocator.free(name);
@@ -1666,32 +1542,9 @@ fn embind_register_std_string(
     type_id: Emscripten.Bind.Type.Id,
     name_ptr: i32,
 ) callconv(.c) void {
-    if (getPhysics(exec_env)) |physics| {
-        const name = readLatin1String(physics, @intCast(name_ptr)) catch return;
-
-        const allocator = physics.embind_allocator;
-
-        const instance = allocator.create(Emscripten.Bind.Type.Instance) catch {
-            allocator.free(name);
-
-            return;
-        };
-
-        instance.* = .{
-            .name = name,
-            .kind = .std_string,
-
-            .physics = physics,
-
-            .destructor = .{ .native = @ptrCast(&freeDesturctor) },
-        };
-
-        physics.registerType(type_id, instance) catch {
-            allocator.free(name);
-
-            allocator.destroy(instance);
-        };
-    }
+    _ = exec_env;
+    _ = type_id;
+    _ = name_ptr;
 }
 
 fn embind_register_std_wstring(
@@ -1700,34 +1553,10 @@ fn embind_register_std_wstring(
     char_size: i32,
     name_ptr: i32,
 ) callconv(.c) void {
-    if (getPhysics(exec_env)) |physics| {
-        const name = readLatin1String(physics, @intCast(name_ptr)) catch return;
-
-        const allocator = physics.embind_allocator;
-
-        const instance = allocator.create(Emscripten.Bind.Type.Instance) catch {
-            allocator.free(name);
-
-            return;
-        };
-
-        instance.* = .{
-            .name = name,
-            .kind = .std_wstring,
-
-            .physics = physics,
-
-            .destructor = .{ .native = @ptrCast(&freeDesturctor) },
-
-            .size = @intCast(char_size),
-        };
-
-        physics.registerType(type_id, instance) catch {
-            allocator.free(name);
-
-            allocator.destroy(instance);
-        };
-    }
+    _ = exec_env;
+    _ = type_id;
+    _ = char_size;
+    _ = name_ptr;
 }
 
 fn embind_register_emval(
@@ -1736,9 +1565,6 @@ fn embind_register_emval(
 ) callconv(.c) void {
     _ = exec_env;
     _ = type_id;
-
-    // if (getPhysics(exec_env)) |physics|
-    //     physics.registerType(type_id, .emval) catch return;
 }
 
 fn embind_register_memory_view(
@@ -1747,35 +1573,10 @@ fn embind_register_memory_view(
     data_type: i32,
     name_ptr: i32,
 ) callconv(.c) void {
-    if (getPhysics(exec_env)) |physics| {
-        if (physics.embind_type_registry.contains(type_id))
-            return;
-
-        const name = readLatin1String(physics, @intCast(name_ptr)) catch return;
-
-        const allocator = physics.embind_allocator;
-
-        const instance = allocator.create(Emscripten.Bind.Type.Instance) catch {
-            allocator.free(name);
-
-            return;
-        };
-
-        instance.* = .{
-            .name = name,
-            .kind = .memory_view,
-
-            .physics = physics,
-
-            .data_type = @intCast(data_type),
-        };
-
-        physics.registerType(type_id, instance) catch {
-            allocator.free(name);
-
-            allocator.destroy(instance);
-        };
-    }
+    _ = exec_env;
+    _ = type_id;
+    _ = data_type;
+    _ = name_ptr;
 }
 
 const MethodSignature = enum {
@@ -1911,22 +1712,18 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 
                 const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
+                // { // Destruct arg_0_wired
+                //     const destructor = context.destructors[0];
 
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
-                }
+                //     switch (destructor) {
+                //         .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
+                //         .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
+                //     }
+                // }
 
-                { // Destruct arg_1_wired
-                    const destructor = context.destructors[1];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_1_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_1_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[1], .{arg_1_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -1940,13 +1737,8 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 
                 const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -1966,13 +1758,8 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 
                 const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -1994,13 +1781,8 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 
                 const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -2022,22 +1804,9 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 
                 const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
-                }
-
-                { // Destruct arg_1_wired
-                    const destructor = context.destructors[1];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_1_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_1_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[1], .{arg_1_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -2059,31 +1828,10 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 
                 const return_wire = physics.call(context.invoker, &.{ context.function_wire, arg_0_wired, arg_1_wired, arg_2_wired }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
-                }
-
-                { // Destruct arg_1_wired
-                    const destructor = context.destructors[1];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_1_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_1_wired.u32ize()}) catch unreachable,
-                    }
-                }
-
-                { // Destruct arg_2_wired
-                    const destructor = context.destructors[2];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_2_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_2_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[1], .{arg_1_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[2], .{arg_2_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -2113,13 +1861,8 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                     arg_3_wired,
                 }) catch unreachable;
 
-                { // Destruct arg_2_wired
-                    const destructor = context.destructors[2];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_2_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_2_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[2], .{arg_2_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -2149,40 +1892,11 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
                     arg_3_wired,
                 }) catch unreachable;
 
-                { // Destruct arg_0_wired
-                    const destructor = context.destructors[0];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_0_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_0_wired.u32ize()}) catch unreachable,
-                    }
-                }
-
-                { // Destruct arg_1_wired
-                    const destructor = context.destructors[1];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_1_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_1_wired.u32ize()}) catch unreachable,
-                    }
-                }
-
-                { // Destruct arg_2_wired
-                    const destructor = context.destructors[2];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_2_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_2_wired.u32ize()}) catch unreachable,
-                    }
-                }
-
-                { // Destruct arg_3_wired
-                    const destructor = context.destructors[3];
-
-                    switch (destructor) {
-                        .native => |destructor_inner| destructor_inner(physics, arg_3_wired.u32ize()),
-                        .wasm => |destructor_inner| _ = physics.callSimple(destructor_inner, .{arg_3_wired.u32ize()}) catch unreachable,
-                    }
+                { // Destruct wired arguments
+                    _ = physics.callSimple(context.destructors[0], .{arg_0_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[1], .{arg_1_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[2], .{arg_2_wired.simplify()}) catch unreachable;
+                    _ = physics.callSimple(context.destructors[3], .{arg_3_wired.simplify()}) catch unreachable;
                 }
 
                 return context.return_type_instance.fromWire(.{ .value = return_wire });
@@ -2561,7 +2275,7 @@ fn embind_finalize_value_array(
 
                             .physics = physics_inner,
 
-                            .destructor = .{ .wasm = tuple_inner.destructor },
+                            .destructor = tuple_inner.destructor,
 
                             .tuple_constructor = tuple_inner.constructor,
                             .tuple_elements = tuple_inner.elements.items,
@@ -2813,10 +2527,6 @@ pub fn registerType(
     instance: *const Emscripten.Bind.Type.Instance,
 ) anyerror!void {
     if (self.embind_type_registry.contains(id))
-        // Handled in embind_register_memory_view
-        // if (instance.kind == .memory_view)
-        //     return
-        // else
         return error.DuplicatedRegistration;
 
     try self.embind_type_registry.put(id, instance);

@@ -1,12 +1,6 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const is_production = b.option(
-        bool,
-        "production",
-        "Enable production build",
-    ) orelse false;
-
     const target = b.standardTargetOptions(.{
         .default_target = .{
             .abi = .msvc,
@@ -15,18 +9,11 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "havok",
-        .root_module = b.createModule(
-            if (is_production) .{
-                .root_source_file = b.path("src/main.zig"),
-                .target = target,
-                .optimize = .ReleaseFast,
-                .strip = true, // TODO: calling wasm_runtime_load breaks program
-            } else .{
-                .root_source_file = b.path("src/main.zig"),
-                .target = target,
-                .optimize = .Debug,
-            },
-        ),
+        .root_module = b.createModule(.{ // TODO: with strip, calling wasm_runtime_load breaks program
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = .Debug,
+        }),
     });
 
     {

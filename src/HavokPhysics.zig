@@ -451,10 +451,12 @@ fn opacifyVectorElements(
     comptime Element: type,
     vector: *const @Vector(len, Element),
 ) [len]Emscripten.Bind.Type.Instance.Opaque {
-    var result: [len]Emscripten.Bind.Type.Instance.Opaque = undefined;
+    const Instance = Emscripten.Bind.Type.Instance;
+
+    var result: [len]Instance.Opaque = undefined;
 
     inline for (0..len) |i|
-        result[i] = Emscripten.Bind.Type.Instance.opacify(&vector[i]);
+        result[i] = Instance.opacify(&vector[i]);
 
     return result;
 }
@@ -463,12 +465,14 @@ fn opacifyTupleElements(
     comptime Tuple: type,
     tuple: *const Tuple,
 ) [@typeInfo(Tuple).@"struct".fields.len]Emscripten.Bind.Type.Instance.Opaque {
+    const Instance = Emscripten.Bind.Type.Instance;
+
     const len = @typeInfo(Tuple).@"struct".fields.len;
 
-    var result: [len]Emscripten.Bind.Type.Instance.Opaque = undefined;
+    var result: [len]Instance.Opaque = undefined;
 
     inline for (0..len) |i|
-        result[i] = Emscripten.Bind.Type.Instance.opacify(&tuple.*[i]);
+        result[i] = Instance.opacify(&tuple[i]);
 
     return result;
 }
@@ -1228,6 +1232,7 @@ heap_buf: []align(8) u8,
 module: wamr.wasm_module_t = null,
 module_inst: wamr.wasm_module_inst_t = null,
 exec_env: wamr.wasm_exec_env_t = null,
+
 table_inst: wamr.wasm_table_inst_t = .{},
 
 cached_functions: [cached_function_indices.kvs.len]wamr.wasm_function_inst_t = @splat(null),
@@ -2610,12 +2615,12 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
         try physics.registerNativeSymbols("wasi_snapshot_preview1", &native_symbols_wasi);
     }
 
-    var error_buf: [128]u8 = undefined;
+    var error_buf = std.mem.zeroes([128]u8);
 
     physics.module = wamr.wasm_runtime_load(
         physics.aot_buf.ptr,
         @intCast(physics.aot_buf.len),
-        &error_buf,
+        &error_buf[0],
         @intCast(error_buf.len),
     );
     if (physics.module == null)

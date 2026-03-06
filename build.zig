@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "havok",
-        .root_module = b.createModule(.{ // TODO: with strip, calling wasm_runtime_load breaks program
+        .root_module = b.createModule(.{ // TODO: with strip enabled, calling wasm_runtime_load breaks program
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = .Debug,

@@ -23,6 +23,12 @@ pub fn main() !void {
 
             log.info("{any}", .{physics.shape.setFilterInfo(sphere_shape_id, .{ 1, 1 })});
             log.info("{any}", .{physics.shape.getFilterInfo(sphere_shape_id)});
+
+            // log.info("{any}", .{physics.shape.setMaterial(sphere_shape_id, .{ 1, 1 })});
+            log.info("{any}", .{physics.shape.getMaterial(sphere_shape_id)});
+
+            log.info("{any}", .{physics.shape.setDensity(sphere_shape_id, 0.5)});
+            log.info("{any}", .{physics.shape.getDensity(sphere_shape_id)});
         }
     }
 }

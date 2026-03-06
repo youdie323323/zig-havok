@@ -142,7 +142,7 @@ const Emscripten = struct {
                                     wire.value,
                             ),
                         ),
-                        .float => opacifyAlloc(Float, physics.embind_temp_allocator, @floatFromInt(wire.value)),
+                        .float => opacifyAlloc(Float, physics.embind_temp_allocator, @bitCast(@as(u32, @intCast(wire.value)))), // Definitely u32
                         .bigint => opacifyAlloc(u64, physics.embind_temp_allocator, wire.value),
                         .@"enum" => opacifyAlloc(u32, physics.embind_temp_allocator, @intCast(wire.value)),
                         .std_string => blk: {
@@ -840,22 +840,55 @@ const Shape = struct {
 
     /// Sets the material of the shape to the provided material.
     pub inline fn setMaterial(self: *const @This(), id: ShapeId, material: Material) Result {
-        return castOpaque(Result, set_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetMaterial")), &id, &material));
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const material_opaque_array = opacifyTupleElements(Material, &material);
+        const material_opaque_tuple: []const Opaque = &material_opaque_array;
+
+        return castOpaque(Result, set_material_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetMaterial")),
+            &id_opaque_tuple,
+            &material_opaque_tuple,
+        ));
     }
 
     /// Get the material associated with the shape.
     pub inline fn getMaterial(self: *const @This(), id: ShapeId) GetMaterialReturn {
-        return castOpaque(GetMaterialReturn, get_material_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")), &id));
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(GetMaterialReturn, get_material_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")),
+            &id_opaque_tuple,
+        ));
     }
 
     /// Set the density of the shape. Used when calling `buildMassProperties`.
     pub inline fn setDensity(self: *const @This(), id: ShapeId, density: Float) Result {
-        return castOpaque(Result, set_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")), &id, &density));
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_density_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")),
+            &id_opaque_tuple,
+            &density,
+        ));
     }
 
     /// Get the density of the shape.
     pub inline fn getDensity(self: *const @This(), id: ShapeId) GetDensityReturn {
-        return castOpaque(GetDensityReturn, get_density_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")), &id));
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(GetDensityReturn, get_density_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")),
+            &id_opaque_tuple,
+        ));
     }
 
     /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.

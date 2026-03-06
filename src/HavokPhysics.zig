@@ -33,7 +33,7 @@ const Emscripten = struct {
                     value: u64,
                     is_multiple: bool = false,
 
-                    inline fn u32ize(self: Wire) u32 {
+                    fn u32ize(self: Wire) u32 {
                         return @intCast(self.value);
                     }
                 };
@@ -72,9 +72,7 @@ const Emscripten = struct {
                 }
 
                 pub fn castOpaque(comptime T: type, @"opaque": Opaque) T {
-                    const info = @typeInfo(T);
-
-                    return switch (info) {
+                    return switch (@typeInfo(T)) {
                         .@"struct" => |struct_info| if (struct_info.is_tuple) blk: {
                             const opaques_ptr: [*]allowzero const Opaque = @ptrCast(@alignCast(@"opaque"));
 
@@ -395,7 +393,7 @@ const Emscripten = struct {
 
         pub const TupleRegistry = std.AutoHashMap(Type.Id, Tuple);
 
-        pub const DependencyWaiter = struct {
+        pub const Dependency = struct {
             context: *anyopaque,
 
             i: usize,
@@ -411,7 +409,7 @@ const Emscripten = struct {
             unregistered: *RegisteredCounter,
         };
 
-        pub const AwaitingDependencies = std.AutoHashMap(Type.Id, array_list.Managed(*DependencyWaiter));
+        pub const AwaitingDependencies = std.AutoHashMap(Type.Id, array_list.Managed(*Dependency));
 
         pub const InvokerContext = struct {
             const max_args = 8;
@@ -433,30 +431,6 @@ const MethodImpl = *const fn (physics: *HavokPhysics, invoker_context_index: u8,
 
 fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
     return @ptrFromInt(0); // Undefined
-}
-
-fn ExternalizeTuple(comptime Tuple: type) type {
-    comptime {
-        const tuple_fields = @typeInfo(Tuple).@"struct".fields;
-
-        var fields: [tuple_fields.len]builtin.Type.StructField = undefined;
-
-        for (tuple_fields, 0..) |field, i|
-            fields[i] = .{
-                .name = fmt.comptimePrint("{d}", .{i + 1}),
-                .type = field.type,
-                .default_value_ptr = field.default_value_ptr,
-                .is_comptime = field.is_comptime,
-                .alignment = field.alignment,
-            };
-
-        return @Type(.{ .@"struct" = .{
-            .layout = .@"extern",
-            .fields = &fields,
-            .decls = &.{},
-            .is_tuple = false,
-        } });
-    }
 }
 
 /// Basic free destructor for pointer.
@@ -675,7 +649,7 @@ const Shape = struct {
     pub var create_debug_display_geometry_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
-    pub inline fn createSphere(self: *const @This(), center: Vector3, radius: Float) CreaterReturn {
+    pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) CreaterReturn {
         const center_opaque_array = opacifyVectorElements(3, Float, &center);
         const center_opaque_vector: []const Opaque = &center_opaque_array;
 
@@ -688,7 +662,7 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a capsule.
-    pub inline fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
+    pub fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
         const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
         const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
 
@@ -705,7 +679,7 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a cylinder.
-    pub inline fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
+    pub fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
         const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
         const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
 
@@ -722,7 +696,7 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a box.
-    pub inline fn createBox(
+    pub fn createBox(
         self: *const @This(),
         /// Position of the box center (in shape space).
         center: Vector3,
@@ -750,7 +724,7 @@ const Shape = struct {
     }
 
     /// Creates a geometry which encloses all the `vertices`.
-    pub inline fn createConvexHull(
+    pub fn createConvexHull(
         self: *const @This(),
         /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
         vertices: u32,
@@ -765,7 +739,7 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing the surface of a mesh.
-    pub inline fn createMesh(
+    pub fn createMesh(
         self: *const @This(),
         /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
         vertices: u32,
@@ -785,7 +759,7 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a height map.
-    pub inline fn createHeightField(
+    pub fn createHeightField(
         self: *const @This(),
         num_x_samples: usize,
         num_z_samples: usize,
@@ -811,7 +785,7 @@ const Shape = struct {
 
     /// Sets the collision info for the shape to the information in `filter_info`.
     /// This can prevent collisions between shapes and queries, depending on how you have configured the filter.
-    pub inline fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
+    pub fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -827,7 +801,7 @@ const Shape = struct {
     }
 
     /// Get the collision filter info for a shape.
-    pub inline fn getFilterInfo(self: *const @This(), id: ShapeId) GetFilterInfoReturn {
+    pub fn getFilterInfo(self: *const @This(), id: ShapeId) GetFilterInfoReturn {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -839,7 +813,7 @@ const Shape = struct {
     }
 
     /// Sets the material of the shape to the provided material.
-    pub inline fn setMaterial(self: *const @This(), id: ShapeId, material: Material) Result {
+    pub fn setMaterial(self: *const @This(), id: ShapeId, material: Material) Result {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -855,7 +829,7 @@ const Shape = struct {
     }
 
     /// Get the material associated with the shape.
-    pub inline fn getMaterial(self: *const @This(), id: ShapeId) GetMaterialReturn {
+    pub fn getMaterial(self: *const @This(), id: ShapeId) GetMaterialReturn {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -867,7 +841,7 @@ const Shape = struct {
     }
 
     /// Set the density of the shape. Used when calling `buildMassProperties`.
-    pub inline fn setDensity(self: *const @This(), id: ShapeId, density: Float) Result {
+    pub fn setDensity(self: *const @This(), id: ShapeId, density: Float) Result {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -880,7 +854,7 @@ const Shape = struct {
     }
 
     /// Get the density of the shape.
-    pub inline fn getDensity(self: *const @This(), id: ShapeId) GetDensityReturn {
+    pub fn getDensity(self: *const @This(), id: ShapeId) GetDensityReturn {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -892,42 +866,68 @@ const Shape = struct {
     }
 
     /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
-    pub inline fn createContainer(self: *const @This()) CreaterReturn {
+    pub fn createContainer(self: *const @This()) CreaterReturn {
         return castOpaque(CreaterReturn, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
     }
 
     /// Adds the `child_id` to the container `container` at the transform `container_from_child`.
-    pub inline fn addChild(self: *const @This(), container: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
-        return castOpaque(Result, add_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")), &container, &child_id, &container_from_child));
+    pub fn addChild(self: *const @This(), container: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
+        const container_opaque_array = opacifyTupleElements(ShapeId, &container);
+        const container_opaque_tuple: []const Opaque = &container_opaque_array;
+
+        const child_id_opaque_array = opacifyTupleElements(ShapeId, &child_id);
+        const child_id_opaque_tuple: []const Opaque = &child_id_opaque_array;
+
+        const container_from_child_1_opaque_array = opacifyVectorElements(3, Float, &container_from_child[0]);
+        const container_from_child_2_opaque_array = opacifyVectorElements(4, Float, &container_from_child[1]);
+        const container_from_child_3_opaque_array = opacifyVectorElements(3, Float, &container_from_child[2]);
+
+        const container_from_child_1_opaque_vector: []const Opaque = &container_from_child_1_opaque_array;
+        const container_from_child_2_opaque_vector: []const Opaque = &container_from_child_2_opaque_array;
+        const container_from_child_3_opaque_vector: []const Opaque = &container_from_child_3_opaque_array;
+
+        const container_from_child_opaque_tuple: []const Opaque = &.{
+            opacify(&container_from_child_1_opaque_vector),
+            opacify(&container_from_child_2_opaque_vector),
+            opacify(&container_from_child_3_opaque_vector),
+        };
+
+        return castOpaque(Result, add_child_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")),
+            &container_opaque_tuple,
+            &child_id_opaque_tuple,
+            &container_from_child_opaque_tuple,
+        ));
     }
 
     /// Removes the child at index `child_index` inside `container`.
-    pub inline fn removeChild(self: *const @This(), container: ShapeId, child_index: u32) Result {
+    pub fn removeChild(self: *const @This(), container: ShapeId, child_index: u32) Result {
         return castOpaque(Result, remove_child_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")), &container, &child_index));
     }
 
     /// Get the number of children of the container.
-    pub inline fn getNumChildren(self: *const @This(), container: ShapeId) GetNumChildrenReturn {
+    pub fn getNumChildren(self: *const @This(), container: ShapeId) GetNumChildrenReturn {
         return castOpaque(GetNumChildrenReturn, get_num_children_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")), &container));
     }
 
     /// Returns the shape id of the child shape at index `child_index` in the container.
-    pub inline fn getChildShape(self: *const @This(), container: ShapeId, child_index: u32) GetChildShapeReturn {
+    pub fn getChildShape(self: *const @This(), container: ShapeId, child_index: u32) GetChildShapeReturn {
         return castOpaque(GetChildShapeReturn, get_child_shape_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")), &container, &child_index));
     }
 
     /// Get the type of the shape.
-    pub inline fn getType(self: *const @This(), id: ShapeId) GetTypeReturn {
+    pub fn getType(self: *const @This(), id: ShapeId) GetTypeReturn {
         return castOpaque(GetTypeReturn, get_type_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")), &id));
     }
 
     /// Retrieve the axis aligned bounding box of `shape` located at `worldFromShape`.
-    pub inline fn getBoundingBox(self: *const @This(), id: ShapeId, worlf_from_shape: QTransform) GetBoundingBoxReturn {
+    pub fn getBoundingBox(self: *const @This(), id: ShapeId, worlf_from_shape: QTransform) GetBoundingBoxReturn {
         return castOpaque(GetBoundingBoxReturn, get_bounding_box_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox")), &id, &worlf_from_shape));
     }
 
     /// Release a shape, freeing memory if it is unused.
-    pub inline fn release(self: *const @This(), id: ShapeId) Result {
+    pub fn release(self: *const @This(), id: ShapeId) Result {
         return castOpaque(Result, release_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")), &id));
     }
 
@@ -943,12 +943,12 @@ const Shape = struct {
     // }
 
     /// Calculates the mass properties of the shape.
-    pub inline fn buildMassProperties(self: *const @This(), id: ShapeId) BuildMassPropertiesReturn {
+    pub fn buildMassProperties(self: *const @This(), id: ShapeId) BuildMassPropertiesReturn {
         return castOpaque(BuildMassPropertiesReturn, build_mass_properties_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties")), &id));
     }
 
     /// Allows descending a hierarchy of shape containers, advancing `current_item` to the next entry.
-    pub inline fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIteratorGetNextReturn {
+    pub fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIteratorGetNextReturn {
         return castOpaque(PathIteratorGetNextReturn, path_iterator_get_next_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")), &current_item));
     }
 
@@ -958,12 +958,12 @@ const Shape = struct {
     ///
     /// Note: Currently, when one of the shapes overlapping a trigger is a mesh shape, one event will be raised per
     /// overlapping triangle. This is subject to change, as it can cause performance issues.
-    pub inline fn setTrigger(self: *const @This(), id: ShapeId, is_trigger: bool) Result {
+    pub fn setTrigger(self: *const @This(), id: ShapeId, is_trigger: bool) Result {
         return castOpaque(Result, set_trigger_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetTrigger")), &id, &is_trigger));
     }
 
     /// Generates a visualization of a shape's geometry, suitable for debugging.
-    pub inline fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) CreateDebugDisplayGeometryReturn {
+    pub fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) CreateDebugDisplayGeometryReturn {
         return castOpaque(CreateDebugDisplayGeometryReturn, create_debug_display_geometry_impl(self.physics, comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")), &id));
     }
 
@@ -983,7 +983,7 @@ const World = struct {
     pub var create_impl = &noopImpl;
 
     /// Allocate a new handle for a world, which is the basis of a simulation.
-    pub inline fn create(self: *const @This()) CreateReturn {
+    pub fn create(self: *const @This()) CreateReturn {
         return castOpaque(CreateReturn, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_World_Create")));
     }
 
@@ -1055,34 +1055,6 @@ const World = struct {
     const castOpaque = Emscripten.Bind.Type.Instance.castOpaque;
     const opacify = Emscripten.Bind.Type.Instance.opacify;
 };
-
-allocator: mem.Allocator,
-
-module: wamr.wasm_module_t = null,
-module_inst: wamr.wasm_module_inst_t = null,
-exec_env: wamr.wasm_exec_env_t = null,
-table_inst: wamr.wasm_table_inst_t = .{},
-
-cached_functions: [cached_function_indices.kvs.len]wamr.wasm_function_inst_t = @splat(null),
-cached_indirect_functions: std.AutoHashMap(u32, wamr.wasm_function_inst_t),
-
-embind_arena: heap.ArenaAllocator,
-/// Allocator especially for embind. Its custom implementation is embind_arena.
-embind_allocator: mem.Allocator,
-
-embind_type_registry: Emscripten.Bind.Type.Registry,
-
-embind_tuple_registry: Emscripten.Bind.TupleRegistry,
-
-embind_awaiting_dependencies: Emscripten.Bind.AwaitingDependencies,
-
-embind_invoker_contexts: [cached_function_indices.kvs.len]?*Emscripten.Bind.InvokerContext = @splat(null),
-
-embind_invoker_function_indices: std.StringHashMap(usize),
-
-embind_temp_arena: heap.ArenaAllocator,
-/// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
-embind_temp_allocator: mem.Allocator,
 
 shape: Shape,
 debug_geometry: struct {
@@ -1247,31 +1219,43 @@ debug: struct {
     // zig fmt: on
 },
 
+allocator: mem.Allocator,
+
+aot_buf: []align(8) u8,
+
+heap_buf: []align(8) u8,
+
+module: wamr.wasm_module_t = null,
+module_inst: wamr.wasm_module_inst_t = null,
+exec_env: wamr.wasm_exec_env_t = null,
+table_inst: wamr.wasm_table_inst_t = .{},
+
+cached_functions: [cached_function_indices.kvs.len]wamr.wasm_function_inst_t = @splat(null),
+cached_indirect_functions: std.AutoHashMap(u32, wamr.wasm_function_inst_t),
+
+embind_arena: heap.ArenaAllocator,
+/// Allocator especially for embind. Its custom implementation is embind_arena.
+embind_allocator: mem.Allocator,
+
+embind_type_registry: Emscripten.Bind.Type.Registry,
+
+embind_tuple_registry: Emscripten.Bind.TupleRegistry,
+
+embind_awaiting_dependencies: Emscripten.Bind.AwaitingDependencies,
+
+embind_invoker_contexts: [cached_function_indices.kvs.len]?*Emscripten.Bind.InvokerContext = @splat(null),
+
+embind_invoker_function_indices: std.StringHashMap(usize),
+
+embind_temp_arena: heap.ArenaAllocator,
+/// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
+embind_temp_allocator: mem.Allocator,
+
 const raw_buf = @embedFile("binary/x86_64/HavokPhysics.aot");
-const buf align(8) = raw_buf.*; // Change alignment for WAMR
 
 const stack_size: u32 = 64 * 1024;
 
 const heap_size: u32 = 1073741824;
-
-var heap_buf: [heap_size]u8 align(8) = undefined;
-
-const heap_ptr: [*]align(8) u8 = &heap_buf;
-
-var heap_i8: []i8 = @as([*]i8, @ptrCast(heap_ptr))[0..heap_size];
-var heap_u8: []u8 = heap_ptr[0..heap_size];
-
-var heap_i16: []i16 = @as([*]i16, @ptrCast(heap_ptr))[0 .. heap_size / 2];
-var heap_u16: []u16 = @as([*]u16, @ptrCast(heap_ptr))[0 .. heap_size / 2];
-
-var heap_i32: []i32 = @as([*]i32, @ptrCast(heap_ptr))[0 .. heap_size / 4];
-var heap_u32: []u32 = @as([*]u32, @ptrCast(heap_ptr))[0 .. heap_size / 4];
-
-var heap_i64: []i64 = @as([*]i64, @ptrCast(heap_ptr))[0 .. heap_size / 8];
-var heap_u64: []u64 = @as([*]u64, @ptrCast(heap_ptr))[0 .. heap_size / 8];
-
-var heap_f32: []f32 = @as([*]f32, @ptrCast(heap_ptr))[0 .. heap_size / 4];
-var heap_f64: []f64 = @as([*]f64, @ptrCast(heap_ptr))[0 .. heap_size / 8];
 
 fn abort_js(_: wamr.wasm_exec_env_t) callconv(.c) void {
     log.err("aborted", .{});
@@ -1392,7 +1376,7 @@ fn whenDependentTypesAreResolved(
             if (!entry.found_existing)
                 entry.value_ptr.* = .init(allocator);
 
-            const waiter = try allocator.create(Emscripten.Bind.DependencyWaiter);
+            const waiter = try allocator.create(Emscripten.Bind.Dependency);
             errdefer allocator.destroy(waiter);
 
             waiter.* = .{
@@ -2534,6 +2518,10 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     physics.* = .{
         .allocator = allocator,
 
+        .aot_buf = try allocator.alignedAlloc(u8, .@"8", raw_buf.len), // Change alignment for WAMR
+
+        .heap_buf = try allocator.alignedAlloc(u8, .@"8", heap_size),
+
         .cached_indirect_functions = .init(allocator),
 
         .embind_arena = undefined,
@@ -2559,22 +2547,25 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
         .debug = .{ .physics = physics },
     };
 
+    // Copy buf onto aot_buf
+    @memcpy(physics.aot_buf, raw_buf);
+
     physics.embind_arena = .init(allocator);
     physics.embind_allocator = physics.embind_arena.allocator();
 
-    physics.embind_temp_arena = .init(heap.page_allocator);
+    physics.embind_temp_arena = .init(allocator);
     physics.embind_temp_allocator = physics.embind_temp_arena.allocator();
 
     for (function_names, 0..) |function_name, i| // Add function indices
         try physics.embind_invoker_function_indices.put(function_name, i);
 
-    var init_args = mem.zeroes(wamr.RuntimeInitArgs);
+    var init_args: wamr.RuntimeInitArgs = .{};
 
     { // Allocate with pool
         init_args.mem_alloc_type = wamr.Alloc_With_Pool;
 
-        init_args.mem_alloc_option.pool.heap_buf = &heap_buf;
-        init_args.mem_alloc_option.pool.heap_size = heap_buf.len;
+        init_args.mem_alloc_option.pool.heap_buf = physics.heap_buf.ptr;
+        init_args.mem_alloc_option.pool.heap_size = heap_size;
     }
 
     if (!wamr.wasm_runtime_full_init(&init_args))
@@ -2619,13 +2610,13 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
         try physics.registerNativeSymbols("wasi_snapshot_preview1", &native_symbols_wasi);
     }
 
-    var error_buf = mem.zeroes([128]u8);
+    var error_buf: [128]u8 = undefined;
 
     physics.module = wamr.wasm_runtime_load(
-        @constCast(&buf),
-        buf.len,
+        physics.aot_buf.ptr,
+        @intCast(physics.aot_buf.len),
         &error_buf,
-        error_buf.len,
+        @intCast(error_buf.len),
     );
     if (physics.module == null)
         return error.LoadFailed;
@@ -2656,7 +2647,7 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     if (!wamr.wasm_runtime_get_export_table_inst(physics.module_inst, "__indirect_function_table", &physics.table_inst))
         return error.TableInstGetFailed;
 
-    {
+    { // Start main
         _ = try physics.callExported("__wasm_call_ctors", &.{});
 
         if (!wamr.wasm_application_execute_main(physics.module_inst, 0, null)) {
@@ -2672,11 +2663,19 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
 }
 
 pub fn deinit(self: *HavokPhysics) void {
+    const allocator = self.allocator;
+
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);
     if (self.module) |module| wamr.wasm_runtime_unload(module);
 
     wamr.wasm_runtime_destroy();
+
+    { // Free buffers
+        allocator.free(self.aot_buf);
+
+        allocator.free(self.heap_buf);
+    }
 
     self.cached_indirect_functions.deinit();
 
@@ -2694,7 +2693,7 @@ pub fn deinit(self: *HavokPhysics) void {
         self.embind_temp_arena.deinit();
     }
 
-    self.allocator.destroy(self);
+    allocator.destroy(self);
 }
 
 fn registerNativeSymbols(

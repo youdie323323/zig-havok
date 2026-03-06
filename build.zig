@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
                 .root_source_file = b.path("src/main.zig"),
                 .target = target,
                 .optimize = .ReleaseFast,
-                .strip = true,
+                .strip = true, // TODO: calling wasm_runtime_load breaks program
             } else .{
                 .root_source_file = b.path("src/main.zig"),
                 .target = target,

@@ -133,19 +133,20 @@ const Emscripten = struct {
 
                             const size = self.size.?;
 
-                            const final_u32: u32 = if (self.is_signed) blk_inner: {
-                                const value_i32: i32 = @bitCast(value_u32);
+                            const final_u32: u32 =
+                                if (self.is_signed) blk_inner: {
+                                    const value_i32: i32 = @bitCast(value_u32);
 
-                                break :blk_inner @bitCast(@as(i32, switch (size) {
-                                    1 => @intCast(@as(i8, @truncate(value_i32))),
-                                    2 => @intCast(@as(i16, @truncate(value_i32))),
-                                    else => value_i32,
-                                }));
-                            } else switch (size) {
-                                1 => value_u32 & 0xFF,
-                                2 => value_u32 & 0xFFFF,
-                                else => value_u32,
-                            };
+                                    break :blk_inner @bitCast(@as(i32, switch (size) {
+                                        1 => @intCast(@as(i8, @truncate(value_i32))),
+                                        2 => @intCast(@as(i16, @truncate(value_i32))),
+                                        else => value_i32,
+                                    }));
+                                } else switch (size) {
+                                    1 => value_u32 & 0xFF,
+                                    2 => value_u32 & 0xFFFF,
+                                    else => value_u32,
+                                };
 
                             break :blk @ptrFromInt(@as(usize, final_u32));
                         },
@@ -462,11 +463,18 @@ fn replaceMethodImpl(
 
         cached_function_indices.getDefinitely("HP_World_Create") => World.create_impl = function,
 
+        cached_function_indices.getDefinitely("HP_World_Release") => World.release_impl = function,
+
+        cached_function_indices.getDefinitely("HP_World_GetBodyBuffer") => World.get_body_buffer_impl = function,
+
         // End world
 
         else => undefined,
     }
 }
+
+const IntResult = struct { Result, u32 };
+const FloatResult = struct { Result, Float };
 
 const Shape = struct {
     physics: *HavokPhysics,
@@ -483,17 +491,16 @@ const Shape = struct {
         u64,
     };
 
-    const CreaterReturn = struct { Result, ShapeId };
-    const GetFilterInfoReturn = struct { Result, FilterInfo };
-    const GetMaterialReturn = struct { Result, Material };
-    const GetDensityReturn = struct { Result, Float };
-    const GetNumChildrenReturn = struct { Result, u32 };
-    const GetChildShapeReturn = struct { Result, ShapeId };
-    const GetTypeReturn = struct { Result, Type };
-    const GetBoundingBoxReturn = struct { Result, Aabb };
-    const BuildMassPropertiesReturn = struct { Result, MassProperties };
-    const PathIteratorGetNextReturn = struct { Result, PathIterator, Float };
-    const CreateDebugDisplayGeometryReturn = struct { Result, DebugGeometryId };
+    const OurResult = struct { Result, ShapeId };
+
+    const TypeResult = struct { Result, Type };
+
+    const FilterInfoResult = struct { Result, FilterInfo };
+    const MaterialResult = struct { Result, Material };
+    const AabbResult = struct { Result, Aabb };
+    const MassPropertiesResult = struct { Result, MassProperties };
+    const ShapePathIterResult = struct { Result, PathIterator, i32 };
+    const DebugDisplayGeometryResult = struct { Result, DebugGeometryId };
 
     pub var create_sphere_impl = &noopImpl;
     pub var create_capsule_impl = &noopImpl;
@@ -536,11 +543,11 @@ const Shape = struct {
     pub var create_debug_display_geometry_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
-    pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) CreaterReturn {
+    pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) OurResult {
         const center_opaque_array = opacifyVectorElements(3, Float, &center);
         const center_opaque_vector: []const Opaque = &center_opaque_array;
 
-        return castOpaque(CreaterReturn, create_sphere_impl(
+        return castOpaque(OurResult, create_sphere_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"),
             &center_opaque_vector,
@@ -549,14 +556,14 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a capsule.
-    pub fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
+    pub fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) OurResult {
         const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
         const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
 
         const point_b_opaque_array = opacifyVectorElements(3, Float, &point_b);
         const point_b_opaque_vector: []const Opaque = &point_b_opaque_array;
 
-        return castOpaque(CreaterReturn, create_capsule_impl(
+        return castOpaque(OurResult, create_capsule_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"),
             &point_a_opaque_vector,
@@ -566,14 +573,14 @@ const Shape = struct {
     }
 
     /// Creates a geometry representing a cylinder.
-    pub fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) CreaterReturn {
+    pub fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) OurResult {
         const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
         const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
 
         const point_b_opaque_array = opacifyVectorElements(3, Float, &point_b);
         const point_b_opaque_vector: []const Opaque = &point_b_opaque_array;
 
-        return castOpaque(CreaterReturn, create_cylinder_impl(
+        return castOpaque(OurResult, create_cylinder_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"),
             &point_a_opaque_vector,
@@ -591,7 +598,7 @@ const Shape = struct {
         rotation: Quaternion,
         /// Total size of the box.
         extents: Vector3,
-    ) CreaterReturn {
+    ) OurResult {
         const center_opaque_array = opacifyVectorElements(3, Float, &center);
         const center_opaque_vector: []const Opaque = &center_opaque_array;
 
@@ -601,7 +608,7 @@ const Shape = struct {
         const extents_opaque_array = opacifyVectorElements(3, Float, &extents);
         const extents_opaque_vector: []const Opaque = &extents_opaque_array;
 
-        return castOpaque(CreaterReturn, create_box_impl(
+        return castOpaque(OurResult, create_box_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"),
             &center_opaque_vector,
@@ -616,8 +623,8 @@ const Shape = struct {
         /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
         vertices: u32,
         num_vertices: usize,
-    ) CreaterReturn {
-        return castOpaque(CreaterReturn, create_convex_hull_impl(
+    ) OurResult {
+        return castOpaque(OurResult, create_convex_hull_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"),
             &vertices,
@@ -634,8 +641,8 @@ const Shape = struct {
         /// Should be triples of 32-bit integers which index into `vertices`.
         triangles: u32,
         num_triangles: usize,
-    ) CreaterReturn {
-        return castOpaque(CreaterReturn, create_mesh_impl(
+    ) OurResult {
+        return castOpaque(OurResult, create_mesh_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"),
             &vertices,
@@ -656,11 +663,11 @@ const Shape = struct {
         /// Should be a buffer of floats, of size (num_x_samples * num_z_samples), describing heights at (x, z) of
         /// [(0, 0), (1, 0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
         heights: u32,
-    ) CreaterReturn {
+    ) OurResult {
         const scale_opaque_array = opacifyVectorElements(3, Float, &scale);
         const scale_opaque_vector: []const Opaque = &scale_opaque_array;
 
-        return castOpaque(CreaterReturn, create_height_field_impl(
+        return castOpaque(OurResult, create_height_field_impl(
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"),
             &num_x_samples,
@@ -688,11 +695,11 @@ const Shape = struct {
     }
 
     /// Get the collision filter info for a shape.
-    pub fn getFilterInfo(self: *const @This(), id: ShapeId) GetFilterInfoReturn {
+    pub fn getFilterInfo(self: *const @This(), id: ShapeId) FilterInfoResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(GetFilterInfoReturn, get_filter_info_impl(
+        return castOpaque(FilterInfoResult, get_filter_info_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")),
             &id_opaque_tuple,
@@ -716,11 +723,11 @@ const Shape = struct {
     }
 
     /// Get the material associated with the shape.
-    pub fn getMaterial(self: *const @This(), id: ShapeId) GetMaterialReturn {
+    pub fn getMaterial(self: *const @This(), id: ShapeId) MaterialResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(GetMaterialReturn, get_material_impl(
+        return castOpaque(MaterialResult, get_material_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")),
             &id_opaque_tuple,
@@ -741,11 +748,11 @@ const Shape = struct {
     }
 
     /// Get the density of the shape.
-    pub fn getDensity(self: *const @This(), id: ShapeId) GetDensityReturn {
+    pub fn getDensity(self: *const @This(), id: ShapeId) FloatResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(GetDensityReturn, get_density_impl(
+        return castOpaque(FloatResult, get_density_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")),
             &id_opaque_tuple,
@@ -753,14 +760,14 @@ const Shape = struct {
     }
 
     /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
-    pub fn createContainer(self: *const @This()) CreaterReturn {
-        return castOpaque(CreaterReturn, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
+    pub fn createContainer(self: *const @This()) OurResult {
+        return castOpaque(OurResult, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
     }
 
     /// Adds the `child_id` to the container `container` at the transform `container_from_child`.
-    pub fn addChild(self: *const @This(), container: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
-        const container_opaque_array = opacifyTupleElements(ShapeId, &container);
-        const container_opaque_tuple: []const Opaque = &container_opaque_array;
+    pub fn addChild(self: *const @This(), container_id: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
 
         const child_id_opaque_array = opacifyTupleElements(ShapeId, &child_id);
         const child_id_opaque_tuple: []const Opaque = &child_id_opaque_array;
@@ -782,56 +789,56 @@ const Shape = struct {
         return castOpaque(Result, add_child_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")),
-            &container_opaque_tuple,
+            &container_id_opaque_tuple,
             &child_id_opaque_tuple,
             &container_from_child_opaque_tuple,
         ));
     }
 
     /// Removes the child at index `child_index` inside `container`.
-    pub fn removeChild(self: *const @This(), container: ShapeId, child_index: u32) Result {
-        const container_opaque_array = opacifyTupleElements(ShapeId, &container);
-        const container_opaque_tuple: []const Opaque = &container_opaque_array;
+    pub fn removeChild(self: *const @This(), container_id: ShapeId, child_index: u32) Result {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
 
         return castOpaque(Result, remove_child_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")),
-            &container_opaque_tuple,
+            &container_id_opaque_tuple,
             &child_index,
         ));
     }
 
     /// Get the number of children of the container.
-    pub fn getNumChildren(self: *const @This(), container: ShapeId) GetNumChildrenReturn {
-        const container_opaque_array = opacifyTupleElements(ShapeId, &container);
-        const container_opaque_tuple: []const Opaque = &container_opaque_array;
+    pub fn getNumChildren(self: *const @This(), container_id: ShapeId) IntResult {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
 
-        return castOpaque(GetNumChildrenReturn, get_num_children_impl(
+        return castOpaque(IntResult, get_num_children_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")),
-            &container_opaque_tuple,
+            &container_id_opaque_tuple,
         ));
     }
 
     /// Returns the shape id of the child shape at index `child_index` in the container.
-    pub fn getChildShape(self: *const @This(), container: ShapeId, child_index: u32) GetChildShapeReturn {
-        const container_opaque_array = opacifyTupleElements(ShapeId, &container);
-        const container_opaque_tuple: []const Opaque = &container_opaque_array;
+    pub fn getChildShape(self: *const @This(), container_id: ShapeId, child_index: u32) OurResult {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
 
-        return castOpaque(GetChildShapeReturn, get_child_shape_impl(
+        return castOpaque(OurResult, get_child_shape_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")),
-            &container_opaque_tuple,
+            &container_id_opaque_tuple,
             &child_index,
         ));
     }
 
     /// Get the type of the shape.
-    pub fn getType(self: *const @This(), id: ShapeId) GetTypeReturn {
+    pub fn getType(self: *const @This(), id: ShapeId) TypeResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(GetTypeReturn, get_type_impl(
+        return castOpaque(TypeResult, get_type_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")),
             &id_opaque_tuple,
@@ -839,7 +846,7 @@ const Shape = struct {
     }
 
     /// Retrieve the axis aligned bounding box of the shape located at `world_from_shape`.
-    pub fn getBoundingBox(self: *const @This(), id: ShapeId, world_from_shape: QTransform) GetBoundingBoxReturn {
+    pub fn getBoundingBox(self: *const @This(), id: ShapeId, world_from_shape: QTransform) AabbResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
@@ -854,7 +861,7 @@ const Shape = struct {
             opacify(&world_from_shape_2_opaque_vector),
         };
 
-        return castOpaque(GetBoundingBoxReturn, get_bounding_box_impl(
+        return castOpaque(AabbResult, get_bounding_box_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox")),
             &id_opaque_tuple,
@@ -886,11 +893,11 @@ const Shape = struct {
     // }
 
     /// Calculates the mass properties of the shape.
-    pub fn buildMassProperties(self: *const @This(), id: ShapeId) BuildMassPropertiesReturn {
+    pub fn buildMassProperties(self: *const @This(), id: ShapeId) MassPropertiesResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(BuildMassPropertiesReturn, build_mass_properties_impl(
+        return castOpaque(MassPropertiesResult, build_mass_properties_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties")),
             &id_opaque_tuple,
@@ -898,11 +905,11 @@ const Shape = struct {
     }
 
     /// Allows descending a hierarchy of shape containers, advancing `current_item` to the next entry.
-    pub fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIteratorGetNextReturn {
+    pub fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) ShapePathIterResult {
         const current_item_opaque_array = opacifyTupleElements(PathIterator, &current_item);
         const current_item_opaque_tuple: []const Opaque = &current_item_opaque_array;
 
-        return castOpaque(PathIteratorGetNextReturn, path_iterator_get_next_impl(
+        return castOpaque(ShapePathIterResult, path_iterator_get_next_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")),
             &current_item_opaque_tuple,
@@ -928,11 +935,11 @@ const Shape = struct {
     }
 
     /// Generates a visualization of a shape's geometry, suitable for debugging.
-    pub fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) CreateDebugDisplayGeometryReturn {
+    pub fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) DebugDisplayGeometryResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(CreateDebugDisplayGeometryReturn, create_debug_display_geometry_impl(
+        return castOpaque(DebugDisplayGeometryResult, create_debug_display_geometry_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")),
             &id_opaque_tuple,
@@ -950,21 +957,45 @@ const Shape = struct {
 const World = struct {
     physics: *HavokPhysics,
 
-    const CreateReturn = struct { Result, WorldId };
+    const OurResult = struct { Result, WorldId };
+
+    const InternalHandleResult = struct { Result, u32 };
 
     pub var create_impl = &noopImpl;
 
+    pub var release_impl = &noopImpl;
+
+    pub var get_body_buffer_impl = &noopImpl;
+
     /// Allocate a new handle for a world, which is the basis of a simulation.
-    pub fn create(self: *const @This()) CreateReturn {
-        return castOpaque(CreateReturn, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_World_Create")));
+    pub fn create(self: *const @This()) OurResult {
+        return castOpaque(OurResult, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_World_Create")));
     }
 
-    pub fn release(self: *@This(), a: u32) !u32 {
-        return self.physics.callExported("HP_World_Release", .{a});
+    /// Releases a world handle, freeing any memory used.
+    pub fn release(self: *const @This(), id: WorldId) Result {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, release_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_Release"),
+            &id_opaque_tuple,
+        ));
     }
 
-    pub fn getBodyBuffer(self: *@This(), a: u32, b: u32) !u32 {
-        return self.physics.callExported("HP_World_GetBodyBuffer", .{ a, b });
+    /// Returns the address of the world's body buffer, for use with
+    /// `body.getWorldTransformOffset`. This result can be invalidated if a
+    /// body is added to the world.
+    pub fn getBodyBuffer(self: *const @This(), id: WorldId) InternalHandleResult {
+        const id_opaque_array = opacifyTupleElements(WorldId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(InternalHandleResult, get_body_buffer_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetBodyBuffer"),
+            &id_opaque_tuple,
+        ));
     }
 
     pub fn setGravity(self: *@This(), a: u32, b: u32) !u32 {
@@ -1022,10 +1053,12 @@ const World = struct {
         return self.physics.callExported("HP_World_GetNextTriggerEvent", .{ a, b });
     }
 
-    const Opaque = Emscripten.Bind.Type.Instance.Opaque;
+    const TypeInstance = Emscripten.Bind.Type.Instance;
 
-    const castOpaque = Emscripten.Bind.Type.Instance.castOpaque;
-    const opacify = Emscripten.Bind.Type.Instance.opacify;
+    const Opaque = TypeInstance.Opaque;
+
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
 };
 
 shape: Shape,

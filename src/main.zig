@@ -10,9 +10,14 @@ pub fn main() !void {
     {
         defer physics.free();
 
-        const result, const world_id = physics.world.create();
+        {
+            const result_1, const world_id = physics.world.create();
+            defer _ = physics.world.release(world_id);
 
-        log.info("{any}, {any}", .{ result, world_id });
+            log.info("{any}, {any}", .{ result_1, world_id });
+
+            log.info("{any}", .{physics.world.getBodyBuffer(world_id)});
+        }
 
         {
             const result_1, const sphere_id = physics.shape.createSphere(.{ 5, 5, 5 }, 0.5);
@@ -29,12 +34,14 @@ pub fn main() !void {
             log.info("{any}", .{physics.shape.setDensity(sphere_id, 0.5)});
             log.info("{any}", .{physics.shape.getDensity(sphere_id)});
 
-            const result_2, const container = physics.shape.createContainer();
-            defer _ = physics.shape.release(container);
+            log.info("{any}", .{physics.shape.createDebugDisplayGeometry(sphere_id)});
 
-            log.info("{any}, {any}", .{ result_2, container });
+            const result_2, const container_id = physics.shape.createContainer();
+            defer _ = physics.shape.release(container_id);
 
-            const result_3 = physics.shape.addChild(container, sphere_id, .{
+            log.info("{any}, {any}", .{ result_2, container_id });
+
+            const result_3 = physics.shape.addChild(container_id, sphere_id, .{
                 .{ 0, 0, 0 },
                 .{ 0, 0, 0, 1 },
                 .{ 1, 1, 1 },
@@ -42,7 +49,7 @@ pub fn main() !void {
 
             log.info("{any}", .{result_3});
 
-            const result_4, const container_num_children = physics.shape.getNumChildren(container);
+            const result_4, const container_num_children = physics.shape.getNumChildren(container_id);
 
             log.info("{any}, {d}", .{ result_4, container_num_children });
         }

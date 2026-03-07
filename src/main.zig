@@ -1,4 +1,4 @@
-const dt: Float = 1.0 / 20.0;
+const dt: Float = 1.0 / 60.0;
 const dt_nanoseconds: u64 = @intFromFloat(dt * time.ns_per_s);
 
 pub fn main() !void {
@@ -42,7 +42,12 @@ pub fn main() !void {
             log.info("{any}", .{physics.shape.setDensity(sphere_id, 0.5)});
             log.info("{any}", .{physics.shape.getDensity(sphere_id)});
 
-            log.info("{any}", .{physics.shape.createDebugDisplayGeometry(sphere_id)});
+            inline for (0..5) |_| {
+                _, const debug_geometry_id = physics.debug_geometry.create(sphere_id);
+                defer _ = physics.debug_geometry.release(debug_geometry_id);
+
+                log.info("{any}, {any}", .{ debug_geometry_id, physics.debug_geometry.getInfo(debug_geometry_id) });
+            }
 
             const result_3, const container_id = physics.shape.createContainer();
             defer _ = physics.shape.release(container_id);
@@ -61,7 +66,7 @@ pub fn main() !void {
         while (true) {
             _ = physics.world.step(world_id, dt);
 
-            log.info("{any}", .{ physics.getStatistics() });
+            log.info("{any}", .{physics.getStatistics()});
 
             Thread.sleep(dt_nanoseconds);
         }

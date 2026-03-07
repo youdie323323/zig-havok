@@ -359,9 +359,17 @@ fn replaceMethodImpl(
 
         cached_function_indices.getDefinitely("HP_Shape_SetTrigger") => Shape.set_trigger_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => Shape.create_debug_display_geometry_impl = function,
-
         // End shape
+
+        // Begin debug geometry
+
+        cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => DebugGeometry.create_impl = function,
+
+        cached_function_indices.getDefinitely("HP_DebugGeometry_GetInfo") => DebugGeometry.get_info_impl = function,
+
+        cached_function_indices.getDefinitely("HP_DebugGeometry_Release") => DebugGeometry.release_impl = function,
+
+        // End debug geometry
 
         // Begin world
 
@@ -559,6 +567,17 @@ const ShapeCastInput = struct {
     BodyId,
 };
 
+const DebugGeometryInfo = struct {
+    /// Address of vertex (float3) buffer in plugin.
+    u32,
+    /// Number of vertices in the buffer.
+    i32,
+    /// Address of triangle (int, int, int) buffer in plugin.
+    u32,
+    /// Number of triangle in the buffer.
+    i32,
+};
+
 const ObjectStatistics = struct {
     /// Num bodies.
     i32,
@@ -619,7 +638,6 @@ const Shape = struct {
     const AabbResult = struct { Result, Aabb };
     const MassPropertiesResult = struct { Result, MassProperties };
     const ShapePathIterResult = struct { Result, PathIterator, i32 };
-    const DebugDisplayGeometryResult = struct { Result, DebugGeometryId };
 
     pub var create_sphere_impl = &noopImpl;
     pub var create_capsule_impl = &noopImpl;
@@ -658,8 +676,6 @@ const Shape = struct {
     pub var path_iterator_get_next_impl = &noopImpl;
 
     pub var set_trigger_impl = &noopImpl;
-
-    pub var create_debug_display_geometry_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
     pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) OurResult {
@@ -1053,14 +1069,59 @@ const Shape = struct {
         ));
     }
 
-    /// Generates a visualization of a shape's geometry, suitable for debugging.
-    pub fn createDebugDisplayGeometry(self: *const @This(), id: ShapeId) DebugDisplayGeometryResult {
-        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
-        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+    const TypeInstance = Emscripten.Bind.Type.Instance;
 
-        return castOpaque(DebugDisplayGeometryResult, create_debug_display_geometry_impl(
+    const Opaque = TypeInstance.Opaque;
+
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
+};
+
+const DebugGeometry = struct {
+    physics: *HavokPhysics,
+
+    const OurResult = struct { Result, DebugGeometryId };
+
+    const InfoResult = struct { Result, DebugGeometryInfo };
+
+    pub var create_impl = &noopImpl;
+
+    pub var get_info_impl = &noopImpl;
+
+    pub var release_impl = &noopImpl;
+
+    /// Generates a visualization of a shape's geometry, suitable for debugging.
+    pub fn create(self: *const @This(), shape_id: ShapeId) OurResult {
+        const shape_id_opaque_array = opacifyTupleElements(ShapeId, &shape_id);
+        const shape_id_opaque_tuple: []const Opaque = &shape_id_opaque_array;
+
+        return castOpaque(OurResult, create_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")),
+            &shape_id_opaque_tuple,
+        ));
+    }
+
+    /// Retrieves the vertex and triangle information for a debug geometry id.
+    pub fn getInfo(self: *const @This(), id: DebugGeometryId) InfoResult {
+        const id_opaque_array = opacifyTupleElements(DebugGeometryId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(InfoResult, get_info_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_DebugGeometry_GetInfo")),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Release the reference to the debug geometry, freeing memory.
+    pub fn release(self: *const @This(), id: DebugGeometryId) Result {
+        const id_opaque_array = opacifyTupleElements(DebugGeometryId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, release_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_DebugGeometry_Release")),
             &id_opaque_tuple,
         ));
     }
@@ -1478,16 +1539,7 @@ const World = struct {
 };
 
 shape: Shape,
-debug_geometry: struct {
-    physics: *HavokPhysics,
-
-    // zig fmt: off
-
-    pub fn getInfo(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_DebugGeometry_GetInfo", .{a, b}); }
-    pub fn release(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_DebugGeometry_Release", .{a}); }
-
-    // zig fmt: on
-},
+debug_geometry: DebugGeometry,
 body: struct {
     physics: *HavokPhysics,
 

@@ -16,9 +16,9 @@ const Emscripten = struct {
                 bigint,
                 // std_string,  // Not used in Havok Physics
                 // std_wstring, // Not used in Havok Physics
-                @"enum", // Can be treated as int?
+                @"enum",
                 tuple,
-                // emval,       // Not used in Havok Physics
+                // emval,       // NOTE: Used in Havok Physics, implement later
                 // memory_view, // Not used in Havok Physics
             };
 
@@ -78,7 +78,6 @@ const Emscripten = struct {
                             castOpaqueSimplex(T, @"opaque"),
                         .float => @bitCast(@as(u32, @truncate(@intFromPtr(@"opaque")))),
                         .@"enum" => @enumFromInt(@as(u32, @truncate(@intFromPtr(@"opaque")))),
-
                         else => castOpaqueSimplex(T, @"opaque"),
                     };
                 }
@@ -311,7 +310,7 @@ fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Inst
     return @ptrFromInt(0); // Undefined
 }
 
-/// You must get function_index from (physics.embind_invoker_function_indices).
+/// You must get function_index from `cached_function_indices` as we need to ensure the index matches.
 fn replaceMethodImpl(
     function_index: usize,
     function: MethodImpl,
@@ -371,6 +370,64 @@ fn replaceMethodImpl(
 
         // End debug geometry
 
+        // Begin body
+
+        cached_function_indices.getDefinitely("HP_Body_Create") => Body.create_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_Release") => Body.release_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetShape") => Body.set_shape_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetShape") => Body.get_shape_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetMotionType") => Body.set_motion_type_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetMotionType") => Body.get_motion_type_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetEventMask") => Body.set_event_mask_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetEventMask") => Body.get_event_mask_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetMassProperties") => Body.set_mass_properties_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetMassProperties") => Body.get_mass_properties_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetLinearDamping") => Body.set_linear_damping_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetLinearDamping") => Body.get_linear_damping_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetAngularDamping") => Body.set_angular_damping_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetAngularDamping") => Body.get_angular_damping_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetGravityFactor") => Body.set_gravity_factor_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetGravityFactor") => Body.get_gravity_factor_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_GetWorldTransformOffset") => Body.get_world_transform_offset_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetQTransform") => Body.set_q_transform_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetQTransform") => Body.get_q_transform_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetPosition") => Body.set_position_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetPosition") => Body.get_position_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetOrientation") => Body.set_orientation_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetOrientation") => Body.get_orientation_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetLinearVelocity") => Body.set_linear_velocity_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetLinearVelocity") => Body.get_linear_velocity_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetAngularVelocity") => Body.set_angular_velocity_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetAngularVelocity") => Body.get_angular_velocity_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetTargetQTransform") => Body.set_target_q_transform_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_ApplyImpulse") => Body.apply_impulse_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_ApplyAngularImpulse") => Body.apply_angular_impulse_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetActivationState") => Body.set_activation_state_impl = function,
+        cached_function_indices.getDefinitely("HP_Body_GetActivationState") => Body.get_activation_state_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetActivationControl") => Body.set_activation_control_impl = function,
+
+        cached_function_indices.getDefinitely("HP_Body_SetActivationPriority") => Body.set_activation_priority_impl = function,
+
+        // End body
+
         // Begin world
 
         cached_function_indices.getDefinitely("HP_World_Create") => World.create_impl = function,
@@ -418,13 +475,21 @@ fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
     _ = physics.callExportedSimple("free", .{ptr}) catch unreachable;
 }
 
-const Vector3 = @Vector(3, Float);
-const Quaternion = @Vector(4, Float);
-const Rotation = @Vector(3, Vector3);
-const QTransform = struct { Vector3, Quaternion };
-const QSTransform = struct { Vector3, Quaternion, Vector3 };
-const Transform = struct { Vector3, Rotation };
-const Aabb = struct { Vector3, Vector3 };
+pub const Vector3 = @Vector(3, Float);
+pub const Quaternion = @Vector(4, Float);
+pub const Rotation = @Vector(3, Vector3);
+pub const QTransform = struct { Vector3, Quaternion };
+pub const QSTransform = struct { Vector3, Quaternion, Vector3 };
+pub const Transform = struct { Vector3, Rotation };
+pub const Aabb = struct { Vector3, Vector3 };
+
+pub const Vector3Result = struct { Result, Vector3 };
+pub const QuaternionResult = struct { Result, Quaternion };
+pub const RotationResult = struct { Result, Rotation };
+pub const QTransformResult = struct { Result, QTransform };
+pub const QSTransformResult = struct { Result, QSTransform };
+pub const TransformResult = struct { Result, Transform };
+pub const AabbResult = struct { Result, Aabb };
 
 fn opacifyVectorElements(
     comptime len: comptime_int,
@@ -457,14 +522,14 @@ fn opacifyTupleElements(
     return result;
 }
 
-const BodyId = struct { u64 };
-const ShapeId = struct { u64 };
-const ConstraintId = struct { u64 };
-const WorldId = struct { u64 };
-const CollectorId = struct { u64 };
-const DebugGeometryId = struct { u64 };
+pub const BodyId = struct { u64 };
+pub const ShapeId = struct { u64 };
+pub const ConstraintId = struct { u64 };
+pub const WorldId = struct { u64 };
+pub const CollectorId = struct { u64 };
+pub const DebugGeometryId = struct { u64 };
 
-const Result = enum(u32) {
+pub const Result = enum(u32) {
     ok,
     fail,
     invalid_handle,
@@ -472,7 +537,15 @@ const Result = enum(u32) {
     not_implemented,
 };
 
-const MaterialCombine = enum(u32) {
+pub const MotionType = enum(u32) {
+    static,
+    kinematic,
+    dynamic,
+};
+
+pub const MotionTypeResult = struct { Result, MotionType };
+
+pub const MaterialCombine = enum(u32) {
     geometric_mean,
     minimum,
     maximum,
@@ -480,7 +553,20 @@ const MaterialCombine = enum(u32) {
     multiply,
 };
 
-const MassProperties = struct {
+pub const ActivationState = enum(u32) {
+    active,
+    inactive,
+};
+
+pub const ActivationStateResult = struct { Result, ActivationState };
+
+pub const ActivationControl = enum(u32) {
+    simulation_controlled,
+    always_active,
+    always_inactive,
+};
+
+pub const MassProperties = struct {
     /// Center of mass.
     Vector3,
     /// Mass.
@@ -491,7 +577,9 @@ const MassProperties = struct {
     Quaternion,
 };
 
-const Material = struct {
+pub const MassPropertiesResult = struct { Result, MassProperties };
+
+pub const Material = struct {
     /// Static friction.
     Float,
     /// Dynamic friction.
@@ -504,14 +592,18 @@ const Material = struct {
     MaterialCombine,
 };
 
-const FilterInfo = struct {
+pub const MaterialResult = struct { Result, Material };
+
+pub const FilterInfo = struct {
     /// Membership mask.
     u32,
     /// Collision mask.
     u32,
 };
 
-const RayCastInput = struct {
+pub const FilterInfoResult = struct { Result, FilterInfo };
+
+pub const RayCastInput = struct {
     /// Start.
     Vector3,
     /// End.
@@ -524,7 +616,7 @@ const RayCastInput = struct {
     BodyId,
 };
 
-const PointProximityInput = struct {
+pub const PointProximityInput = struct {
     /// Point position.
     Vector3,
     /// Max distance.
@@ -537,7 +629,7 @@ const PointProximityInput = struct {
     BodyId,
 };
 
-const ShapeProximityInput = struct {
+pub const ShapeProximityInput = struct {
     /// Shape id.
     ShapeId,
     /// Shape position.
@@ -552,7 +644,7 @@ const ShapeProximityInput = struct {
     BodyId,
 };
 
-const ShapeCastInput = struct {
+pub const ShapeCastInput = struct {
     /// Shape id.
     ShapeId,
     /// Shape orientation.
@@ -567,7 +659,7 @@ const ShapeCastInput = struct {
     BodyId,
 };
 
-const DebugGeometryInfo = struct {
+pub const DebugGeometryInfo = struct {
     /// Address of vertex (float3) buffer in plugin.
     u32,
     /// Number of vertices in the buffer.
@@ -578,7 +670,9 @@ const DebugGeometryInfo = struct {
     i32,
 };
 
-const ObjectStatistics = struct {
+pub const DebugGeometryInfoResult = struct { Result, DebugGeometryInfo };
+
+pub const ObjectStatistics = struct {
     /// Num bodies.
     i32,
     /// Num shapes.
@@ -593,14 +687,15 @@ const ObjectStatistics = struct {
     i32,
 };
 
-const IntResult = struct { Result, i32 };
+pub const ObjectStatisticsResult = struct { Result, ObjectStatistics };
 
-const FloatResult = struct { Result, Float };
-const FloatPairResult = struct { Result, Float, Float };
+pub const IntResult = struct { Result, i32 };
+pub const Uint32Result = struct { Result, u32 };
+
+pub const FloatResult = struct { Result, Float };
+pub const FloatPairResult = struct { Result, Float, Float };
 
 // Begin flats
-
-const ObjectStatisticsResult = struct { Result, ObjectStatistics };
 
 var get_statistics_impl = &noopImpl;
 
@@ -615,13 +710,19 @@ pub fn getStatistics(self: *HavokPhysics) ObjectStatisticsResult {
 
 // End flats
 
-const Shape = struct {
+pub const InternalHandleResult = Uint32Result;
+
+pub const Shape = struct {
     physics: *HavokPhysics,
+
+    pub const OurResult = struct { Result, ShapeId };
 
     pub const Type = enum(u32) {
         collider,
         container,
     };
+
+    pub const TypeResult = struct { Result, Type };
 
     pub const PathIterator = struct {
         /// Shape id.
@@ -630,52 +731,44 @@ const Shape = struct {
         u64,
     };
 
-    const OurResult = struct { Result, ShapeId };
+    pub const ShapePathIterResult = struct { Result, PathIterator, i32 };
 
-    const TypeResult = struct { Result, Type };
-    const FilterInfoResult = struct { Result, FilterInfo };
-    const MaterialResult = struct { Result, Material };
-    const AabbResult = struct { Result, Aabb };
-    const MassPropertiesResult = struct { Result, MassProperties };
-    const ShapePathIterResult = struct { Result, PathIterator, i32 };
+    var create_sphere_impl = &noopImpl;
+    var create_capsule_impl = &noopImpl;
+    var create_cylinder_impl = &noopImpl;
+    var create_box_impl = &noopImpl;
+    var create_convex_hull_impl = &noopImpl;
+    var create_mesh_impl = &noopImpl;
+    var create_height_field_impl = &noopImpl;
+    var create_container_impl = &noopImpl;
 
-    pub var create_sphere_impl = &noopImpl;
-    pub var create_capsule_impl = &noopImpl;
-    pub var create_cylinder_impl = &noopImpl;
-    pub var create_box_impl = &noopImpl;
-    pub var create_convex_hull_impl = &noopImpl;
-    pub var create_mesh_impl = &noopImpl;
-    pub var create_height_field_impl = &noopImpl;
+    var set_filter_info_impl = &noopImpl;
+    var get_filter_info_impl = &noopImpl;
 
-    pub var set_filter_info_impl = &noopImpl;
-    pub var get_filter_info_impl = &noopImpl;
+    var set_material_impl = &noopImpl;
+    var get_material_impl = &noopImpl;
 
-    pub var set_material_impl = &noopImpl;
-    pub var get_material_impl = &noopImpl;
+    var set_density_impl = &noopImpl;
+    var get_density_impl = &noopImpl;
 
-    pub var set_density_impl = &noopImpl;
-    pub var get_density_impl = &noopImpl;
+    var add_child_impl = &noopImpl;
+    var remove_child_impl = &noopImpl;
 
-    pub var create_container_impl = &noopImpl;
+    var get_num_children_impl = &noopImpl;
 
-    pub var add_child_impl = &noopImpl;
-    pub var remove_child_impl = &noopImpl;
+    var get_child_shape_impl = &noopImpl;
 
-    pub var get_num_children_impl = &noopImpl;
+    var get_type_impl = &noopImpl;
 
-    pub var get_child_shape_impl = &noopImpl;
+    var get_bounding_box_impl = &noopImpl;
 
-    pub var get_type_impl = &noopImpl;
+    var release_impl = &noopImpl;
 
-    pub var get_bounding_box_impl = &noopImpl;
+    var build_mass_properties_impl = &noopImpl;
 
-    pub var release_impl = &noopImpl;
+    var path_iterator_get_next_impl = &noopImpl;
 
-    pub var build_mass_properties_impl = &noopImpl;
-
-    pub var path_iterator_get_next_impl = &noopImpl;
-
-    pub var set_trigger_impl = &noopImpl;
+    var set_trigger_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
     pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) OurResult {
@@ -812,6 +905,111 @@ const Shape = struct {
         ));
     }
 
+    /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
+    pub fn createContainer(self: *const @This()) OurResult {
+        return castOpaque(OurResult, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
+    }
+
+    /// Release a shape, freeing memory if it is unused.
+    pub fn release(self: *const @This(), id: ShapeId) Result {
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, release_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Get the type of the shape.
+    pub fn getType(self: *const @This(), id: ShapeId) TypeResult {
+        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(TypeResult, get_type_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Adds the `child_id` to the container `container` at the transform `container_from_child`.
+    pub fn addChild(self: *const @This(), container_id: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
+
+        const child_id_opaque_array = opacifyTupleElements(ShapeId, &child_id);
+        const child_id_opaque_tuple: []const Opaque = &child_id_opaque_array;
+
+        const container_from_child_1_opaque_array = opacifyVectorElements(3, Float, &container_from_child[0]);
+        const container_from_child_2_opaque_array = opacifyVectorElements(4, Float, &container_from_child[1]);
+        const container_from_child_3_opaque_array = opacifyVectorElements(3, Float, &container_from_child[2]);
+
+        const container_from_child_1_opaque_vector: []const Opaque = &container_from_child_1_opaque_array;
+        const container_from_child_2_opaque_vector: []const Opaque = &container_from_child_2_opaque_array;
+        const container_from_child_3_opaque_vector: []const Opaque = &container_from_child_3_opaque_array;
+
+        const container_from_child_opaque_tuple: []const Opaque = &.{
+            opacify(&container_from_child_1_opaque_vector),
+            opacify(&container_from_child_2_opaque_vector),
+            opacify(&container_from_child_3_opaque_vector),
+        };
+
+        return castOpaque(Result, add_child_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")),
+            &container_id_opaque_tuple,
+            &child_id_opaque_tuple,
+            &container_from_child_opaque_tuple,
+        ));
+    }
+
+    /// Removes the child at index `child_index` inside `container`.
+    pub fn removeChild(self: *const @This(), container_id: ShapeId, child_index: u32) Result {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
+
+        return castOpaque(Result, remove_child_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")),
+            &container_id_opaque_tuple,
+            &child_index,
+        ));
+    }
+
+    /// Get the number of children of the container.
+    pub fn getNumChildren(self: *const @This(), container_id: ShapeId) IntResult {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
+
+        return castOpaque(IntResult, get_num_children_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")),
+            &container_id_opaque_tuple,
+        ));
+    }
+
+    /// Returns the shape id of the child shape at index `child_index` in the container.
+    pub fn getChildShape(self: *const @This(), container_id: ShapeId, child_index: u32) OurResult {
+        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
+        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
+
+        return castOpaque(OurResult, get_child_shape_impl(
+            self.physics,
+            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")),
+            &container_id_opaque_tuple,
+            &child_index,
+        ));
+    }
+
+    // pub fn setChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
+    //     return self.physics.callExported("HP_Shape_SetChildQSTransform", .{ a, b, c });
+    // }
+    // pub fn getChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
+    //     return self.physics.callExported("HP_Shape_GetChildQSTransform", .{ a, b, c });
+    // }
+
     /// Sets the collision info for the shape to the information in `filter_info`.
     /// This can prevent collisions between shapes and queries, depending on how you have configured the filter.
     pub fn setFilterInfo(self: *const @This(), id: ShapeId, filter_info: FilterInfo) Result {
@@ -894,92 +1092,6 @@ const Shape = struct {
         ));
     }
 
-    /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
-    pub fn createContainer(self: *const @This()) OurResult {
-        return castOpaque(OurResult, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
-    }
-
-    /// Adds the `child_id` to the container `container` at the transform `container_from_child`.
-    pub fn addChild(self: *const @This(), container_id: ShapeId, child_id: ShapeId, container_from_child: QSTransform) Result {
-        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
-        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
-
-        const child_id_opaque_array = opacifyTupleElements(ShapeId, &child_id);
-        const child_id_opaque_tuple: []const Opaque = &child_id_opaque_array;
-
-        const container_from_child_1_opaque_array = opacifyVectorElements(3, Float, &container_from_child[0]);
-        const container_from_child_2_opaque_array = opacifyVectorElements(4, Float, &container_from_child[1]);
-        const container_from_child_3_opaque_array = opacifyVectorElements(3, Float, &container_from_child[2]);
-
-        const container_from_child_1_opaque_vector: []const Opaque = &container_from_child_1_opaque_array;
-        const container_from_child_2_opaque_vector: []const Opaque = &container_from_child_2_opaque_array;
-        const container_from_child_3_opaque_vector: []const Opaque = &container_from_child_3_opaque_array;
-
-        const container_from_child_opaque_tuple: []const Opaque = &.{
-            opacify(&container_from_child_1_opaque_vector),
-            opacify(&container_from_child_2_opaque_vector),
-            opacify(&container_from_child_3_opaque_vector),
-        };
-
-        return castOpaque(Result, add_child_impl(
-            self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")),
-            &container_id_opaque_tuple,
-            &child_id_opaque_tuple,
-            &container_from_child_opaque_tuple,
-        ));
-    }
-
-    /// Removes the child at index `child_index` inside `container`.
-    pub fn removeChild(self: *const @This(), container_id: ShapeId, child_index: u32) Result {
-        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
-        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
-
-        return castOpaque(Result, remove_child_impl(
-            self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")),
-            &container_id_opaque_tuple,
-            &child_index,
-        ));
-    }
-
-    /// Get the number of children of the container.
-    pub fn getNumChildren(self: *const @This(), container_id: ShapeId) IntResult {
-        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
-        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
-
-        return castOpaque(IntResult, get_num_children_impl(
-            self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")),
-            &container_id_opaque_tuple,
-        ));
-    }
-
-    /// Returns the shape id of the child shape at index `child_index` in the container.
-    pub fn getChildShape(self: *const @This(), container_id: ShapeId, child_index: u32) OurResult {
-        const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
-        const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
-
-        return castOpaque(OurResult, get_child_shape_impl(
-            self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")),
-            &container_id_opaque_tuple,
-            &child_index,
-        ));
-    }
-
-    /// Get the type of the shape.
-    pub fn getType(self: *const @This(), id: ShapeId) TypeResult {
-        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
-        const id_opaque_tuple: []const Opaque = &id_opaque_array;
-
-        return castOpaque(TypeResult, get_type_impl(
-            self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")),
-            &id_opaque_tuple,
-        ));
-    }
-
     /// Retrieve the axis aligned bounding box of the shape located at `world_from_shape`.
     pub fn getBoundingBox(self: *const @This(), id: ShapeId, world_from_shape: QTransform) AabbResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
@@ -1003,25 +1115,6 @@ const Shape = struct {
             &world_from_shape_opaque_tuple,
         ));
     }
-
-    /// Release a shape, freeing memory if it is unused.
-    pub fn release(self: *const @This(), id: ShapeId) Result {
-        const id_opaque_array = opacifyTupleElements(ShapeId, &id);
-        const id_opaque_tuple: []const Opaque = &id_opaque_array;
-
-        return castOpaque(Result, release_impl(
-            self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")),
-            &id_opaque_tuple,
-        ));
-    }
-
-    // pub fn setChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
-    //     return self.physics.callExported("HP_Shape_SetChildQSTransform", .{ a, b, c });
-    // }
-    // pub fn getChildQSTransform(self: *const @This(), a: u32, b: u32, c: u32) !u32 {
-    //     return self.physics.callExported("HP_Shape_GetChildQSTransform", .{ a, b, c });
-    // }
 
     // pub fn castRay(self: *const @This(), a: u32, b: u32, c: u32, d: u32, e: u32) !u32 {
     //     return self.physics.callExported("HP_Shape_CastRay", .{ a, b, c, d, e });
@@ -1077,18 +1170,582 @@ const Shape = struct {
     const opacify = TypeInstance.opacify;
 };
 
-const DebugGeometry = struct {
+pub const Body = struct {
     physics: *HavokPhysics,
 
-    const OurResult = struct { Result, DebugGeometryId };
+    pub const OurResult = struct { Result, BodyId };
 
-    const InfoResult = struct { Result, DebugGeometryInfo };
+    var create_impl = &noopImpl;
 
-    pub var create_impl = &noopImpl;
+    var release_impl = &noopImpl;
 
-    pub var get_info_impl = &noopImpl;
+    var set_shape_impl = &noopImpl;
+    var get_shape_impl = &noopImpl;
 
-    pub var release_impl = &noopImpl;
+    var set_motion_type_impl = &noopImpl;
+    var get_motion_type_impl = &noopImpl;
+
+    var set_event_mask_impl = &noopImpl;
+    var get_event_mask_impl = &noopImpl;
+
+    var set_mass_properties_impl = &noopImpl;
+    var get_mass_properties_impl = &noopImpl;
+
+    var set_linear_damping_impl = &noopImpl;
+    var get_linear_damping_impl = &noopImpl;
+
+    var set_angular_damping_impl = &noopImpl;
+    var get_angular_damping_impl = &noopImpl;
+
+    var set_gravity_factor_impl = &noopImpl;
+    var get_gravity_factor_impl = &noopImpl;
+
+    var get_world_transform_offset_impl = &noopImpl;
+
+    var set_q_transform_impl = &noopImpl;
+    var get_q_transform_impl = &noopImpl;
+
+    var set_position_impl = &noopImpl;
+    var get_position_impl = &noopImpl;
+
+    var set_orientation_impl = &noopImpl;
+    var get_orientation_impl = &noopImpl;
+
+    var set_linear_velocity_impl = &noopImpl;
+    var get_linear_velocity_impl = &noopImpl;
+
+    var set_angular_velocity_impl = &noopImpl;
+    var get_angular_velocity_impl = &noopImpl;
+
+    var set_target_q_transform_impl = &noopImpl;
+
+    var apply_impulse_impl = &noopImpl;
+    var apply_angular_impulse_impl = &noopImpl;
+
+    var set_activation_state_impl = &noopImpl;
+    var get_activation_state_impl = &noopImpl;
+
+    var set_activation_control_impl = &noopImpl;
+
+    var set_activation_priority_impl = &noopImpl;
+
+    /// Allocates a new body.
+    pub fn create(self: *const @This()) OurResult {
+        return castOpaque(OurResult, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Body_Create")));
+    }
+
+    /// Releases a body, potentially freeing the memory. Will not remove from the world if body is in use.
+    pub fn release(self: *const @This(), id: BodyId) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, release_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_Release"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Sets body to use a particular shape.
+    /// A body can only have a single shape; multiple shapes should be wrapped in a container shape.
+    pub fn setShape(self: *const @This(), id: BodyId, shape_id: ShapeId) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const shape_id_opaque_array = opacifyTupleElements(ShapeId, &shape_id);
+        const shape_id_opaque_tuple: []const Opaque = &shape_id_opaque_array;
+
+        return castOpaque(Result, set_shape_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetShape"),
+            &id_opaque_tuple,
+            &shape_id_opaque_tuple,
+        ));
+    }
+
+    /// Get the shape in use by a body.
+    pub fn getShape(self: *const @This(), id: BodyId) Shape.OurResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Shape.OurResult, get_shape_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetShape"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the body to behave according to the motion type.
+    pub fn setMotionType(self: *const @This(), id: BodyId, motion_type: MotionType) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_motion_type_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetMotionType"),
+            &id_opaque_tuple,
+            &motion_type,
+        ));
+    }
+
+    /// Get the current motion type of the body.
+    pub fn getMotionType(self: *const @This(), id: BodyId) MotionTypeResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(MotionTypeResult, get_motion_type_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetMotionType"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Configure a body to raise events, based on `event_mask`. Bodies will not raise events by default.
+    /// The event mask should be the integer value of the EventType enum for all the events you wish to opt into, ORed together.
+    pub fn setEventMask(self: *const @This(), id: BodyId, event_mask: u32) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_event_mask_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetEventMask"),
+            &id_opaque_tuple,
+            &event_mask,
+        ));
+    }
+
+    /// Get the event mask of a body.
+    pub fn getEventMask(self: *const @This(), id: BodyId) Uint32Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Uint32Result, get_event_mask_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetEventMask"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Configures the body to use the supplied mass properties.
+    pub fn setMassProperties(self: *const @This(), id: BodyId, mass_properties: MassProperties) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const mass_properties_1_opaque_array = opacifyVectorElements(3, Float, &mass_properties[0]);
+        const mass_properties_3_opaque_array = opacifyVectorElements(3, Float, &mass_properties[2]);
+        const mass_properties_4_opaque_array = opacifyVectorElements(4, Float, &mass_properties[3]);
+
+        const mass_properties_1_opaque_vector: []const Opaque = &mass_properties_1_opaque_array;
+        const mass_properties_3_opaque_vector: []const Opaque = &mass_properties_3_opaque_array;
+        const mass_properties_4_opaque_vector: []const Opaque = &mass_properties_4_opaque_array;
+
+        const mass_properties_opaque_tuple: []const Opaque = &.{
+            opacify(&mass_properties_1_opaque_vector),
+            opacify(&mass_properties[1]),
+            opacify(&mass_properties_3_opaque_vector),
+            opacify(&mass_properties_4_opaque_vector),
+        };
+
+        return castOpaque(Result, set_mass_properties_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetMassProperties"),
+            &id_opaque_tuple,
+            &mass_properties_opaque_tuple,
+        ));
+    }
+
+    /// Get the mass properties currently used by the body.
+    pub fn getMassProperties(self: *const @This(), id: BodyId) MassPropertiesResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(MassPropertiesResult, get_mass_properties_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetMassProperties"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Sets the linear damping of a body.
+    /// This will reduce the linear velocity of the body by some fraction every step,
+    /// even when the body is not in collision.
+    pub fn setLinearDamping(self: *const @This(), id: BodyId, damping: Float) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_linear_damping_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetLinearDamping"),
+            &id_opaque_tuple,
+            &damping,
+        ));
+    }
+
+    /// Get the linear damping of a body.
+    pub fn getLinearDamping(self: *const @This(), id: BodyId) FloatResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(FloatResult, get_linear_damping_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetLinearDamping"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Sets the angular damping of a body.
+    /// This will reduce the angular velocity of the body by some fraction every step,
+    /// event when the body is not in collision.
+    pub fn setAngularDamping(self: *const @This(), id: BodyId, damping: Float) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_angular_damping_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetAngularDamping"),
+            &id_opaque_tuple,
+            &damping,
+        ));
+    }
+
+    /// Get the angular damping of a body.
+    pub fn getAngularDamping(self: *const @This(), id: BodyId) FloatResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(FloatResult, get_angular_damping_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetAngularDamping"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the gravity factor of the body. This will scale the effect of gravity on the body during the simulation step.
+    pub fn setGravityFactor(self: *const @This(), id: BodyId, factor: Float) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_gravity_factor_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetGravityFactor"),
+            &id_opaque_tuple,
+            &factor,
+        ));
+    }
+
+    /// Get the gravity factor of a body.
+    pub fn getGravityFactor(self: *const @This(), id: BodyId) FloatResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(FloatResult, get_gravity_factor_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetGravityFactor"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    // pub fn getWorld(self: *@This(), a: u32, b: u32) !u32 {
+    //     return self.physics.callExported("HP_Body_GetWorld", .{ a, b });
+    // }
+
+    /// Return the offet of the memory containing the body's transform from the
+    /// world's body buffer. This is only valid if the body is in the world.
+    pub fn getWorldTransformOffset(self: *const @This(), id: BodyId) InternalHandleResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(InternalHandleResult, get_world_transform_offset_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetWorldTransformOffset"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the transform of the body (in world space).
+    pub fn setQTransform(self: *const @This(), id: BodyId, transform: QTransform) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const transform_1_opaque_array = opacifyVectorElements(3, Float, &transform[0]);
+        const transform_2_opaque_array = opacifyVectorElements(4, Float, &transform[1]);
+
+        const transform_1_opaque_vector: []const Opaque = &transform_1_opaque_array;
+        const transform_2_opaque_vector: []const Opaque = &transform_2_opaque_array;
+
+        const transform_opaque_tuple: []const Opaque = &.{
+            opacify(&transform_1_opaque_vector),
+            opacify(&transform_2_opaque_vector),
+        };
+
+        return castOpaque(Result, set_q_transform_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetQTransform"),
+            &id_opaque_tuple,
+            &transform_opaque_tuple,
+        ));
+    }
+
+    /// Get the transform of the body (in world space).
+    pub fn getQTransform(self: *const @This(), id: BodyId) QTransformResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(QTransformResult, get_q_transform_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetQTransform"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Sets the position of the body (in world space).
+    /// If you wish to also set the orientation, you should use `setQTransform`.
+    pub fn setPosition(self: *const @This(), id: BodyId, position: Vector3) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const position_opaque_array = opacifyVectorElements(3, Float, &position);
+        const position_opaque_vector: []const Opaque = &position_opaque_array;
+
+        return castOpaque(Result, set_position_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetPosition"),
+            &id_opaque_tuple,
+            &position_opaque_vector,
+        ));
+    }
+
+    /// Gets the position of the body (in world space).
+    /// Consider using `getQTransform` instead.
+    pub fn getPosition(self: *const @This(), id: BodyId) Vector3Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Vector3Result, get_position_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetPosition"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Sets the orientation of the body (in world space).
+    /// If you wish to also set the position, you should use `setQTransform`.
+    pub fn setOrientation(self: *const @This(), id: BodyId, orientation: Quaternion) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const orientation_opaque_array = opacifyVectorElements(4, Float, &orientation);
+        const orientation_opaque_vector: []const Opaque = &orientation_opaque_array;
+
+        return castOpaque(Result, set_orientation_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetOrientation"),
+            &id_opaque_tuple,
+            &orientation_opaque_vector,
+        ));
+    }
+
+    /// Gets the orientation of the body (in world space).
+    /// Consider using `getQTransform` instead.
+    pub fn getOrientation(self: *const @This(), id: BodyId) QuaternionResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(QuaternionResult, get_orientation_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetOrientation"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the linear velocity of a body. No effect on static bodies.
+    pub fn setLinearVelocity(self: *const @This(), id: BodyId, velocity: Vector3) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const velocity_opaque_array = opacifyVectorElements(3, Float, &velocity);
+        const velocity_opaque_vector: []const Opaque = &velocity_opaque_array;
+
+        return castOpaque(Result, set_linear_velocity_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetLinearVelocity"),
+            &id_opaque_tuple,
+            &velocity_opaque_vector,
+        ));
+    }
+
+    /// Get the linear velocity of a body.
+    pub fn getLinearVelocity(self: *const @This(), id: BodyId) Vector3Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Vector3Result, get_linear_velocity_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetLinearVelocity"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the angular velocity of a body. No effect on static bodies.
+    pub fn setAngularVelocity(self: *const @This(), id: BodyId, velocity: Vector3) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const velocity_opaque_array = opacifyVectorElements(3, Float, &velocity);
+        const velocity_opaque_vector: []const Opaque = &velocity_opaque_array;
+
+        return castOpaque(Result, set_angular_velocity_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetAngularVelocity"),
+            &id_opaque_tuple,
+            &velocity_opaque_vector,
+        ));
+    }
+
+    /// Get the angular velocity of a body.
+    pub fn getAngularVelocity(self: *const @This(), id: BodyId) Vector3Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Vector3Result, get_angular_velocity_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetAngularVelocity"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Change the body velocity such that next step, it would reach the target transform.
+    /// Dynamic bodies can still be prevented from reaching that transform by collisions and constraints.
+    pub fn setTargetQTransform(self: *const @This(), id: BodyId, transform: QTransform) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const transform_1_opaque_array = opacifyVectorElements(3, Float, &transform[0]);
+        const transform_2_opaque_array = opacifyVectorElements(4, Float, &transform[1]);
+
+        const transform_1_opaque_vector: []const Opaque = &transform_1_opaque_array;
+        const transform_2_opaque_vector: []const Opaque = &transform_2_opaque_array;
+
+        const transform_opaque_tuple: []const Opaque = &.{
+            opacify(&transform_1_opaque_vector),
+            opacify(&transform_2_opaque_vector),
+        };
+
+        return castOpaque(Result, set_target_q_transform_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetTargetQTransform"),
+            &id_opaque_tuple,
+            &transform_opaque_tuple,
+        ));
+    }
+
+    /// Apply the impulse `impulse` to the body at the position `location` in world space.
+    pub fn applyImpulse(self: *const @This(), id: BodyId, location: Vector3, impulse: Vector3) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const location_opaque_array = opacifyVectorElements(3, Float, &location);
+        const location_opaque_vector: []const Opaque = &location_opaque_array;
+
+        const impulse_opaque_array = opacifyVectorElements(3, Float, &impulse);
+        const impulse_opaque_vector: []const Opaque = &impulse_opaque_array;
+
+        return castOpaque(Result, apply_impulse_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_ApplyImpulse"),
+            &id_opaque_tuple,
+            &location_opaque_vector,
+            &impulse_opaque_vector,
+        ));
+    }
+
+    /// Applies the angular impulse `impulse` to the body around its center of mass.
+    pub fn applyAngularImpulse(self: *const @This(), id: BodyId, impulse: Vector3) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const impulse_opaque_array = opacifyVectorElements(3, Float, &impulse);
+        const impulse_opaque_vector: []const Opaque = &impulse_opaque_array;
+
+        return castOpaque(Result, apply_angular_impulse_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_ApplyAngularImpulse"),
+            &id_opaque_tuple,
+            &impulse_opaque_vector,
+        ));
+    }
+
+    /// Try to set the activation state of a body.
+    pub fn setActivationState(self: *const @This(), id: BodyId, state: ActivationState) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_activation_state_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetActivationState"),
+            &id_opaque_tuple,
+            &state,
+        ));
+    }
+
+    /// Get the current activation state of a body.
+    pub fn getActivationState(self: *const @This(), id: BodyId) ActivationStateResult {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ActivationStateResult, get_activation_state_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_GetActivationState"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the activation behavior of a body. See `ActivationControl` for more details.
+    pub fn setActivationControl(self: *const @This(), id: BodyId, control: ActivationControl) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_activation_control_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetActivationControl"),
+            &id_opaque_tuple,
+            &control,
+        ));
+    }
+
+    /// Set the activation priority of a body. Defaults to 0.
+    /// A body with simulation controlled activation will only be activated by interactions from other bodies
+    /// whose priority is >= `priority`
+    pub fn setActivationPriority(self: *const @This(), id: BodyId, priority: i7) Result {
+        const id_opaque_array = opacifyTupleElements(BodyId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_activation_priority_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_Body_SetActivationPriority"),
+            &id_opaque_tuple,
+            &priority,
+        ));
+    }
+
+    const TypeInstance = Emscripten.Bind.Type.Instance;
+
+    const Opaque = TypeInstance.Opaque;
+
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
+};
+
+pub const DebugGeometry = struct {
+    physics: *HavokPhysics,
+
+    pub const OurResult = struct { Result, DebugGeometryId };
+
+    var create_impl = &noopImpl;
+
+    var get_info_impl = &noopImpl;
+
+    var release_impl = &noopImpl;
 
     /// Generates a visualization of a shape's geometry, suitable for debugging.
     pub fn create(self: *const @This(), shape_id: ShapeId) OurResult {
@@ -1103,11 +1760,11 @@ const DebugGeometry = struct {
     }
 
     /// Retrieves the vertex and triangle information for a debug geometry id.
-    pub fn getInfo(self: *const @This(), id: DebugGeometryId) InfoResult {
+    pub fn getInfo(self: *const @This(), id: DebugGeometryId) DebugGeometryInfoResult {
         const id_opaque_array = opacifyTupleElements(DebugGeometryId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(InfoResult, get_info_impl(
+        return castOpaque(DebugGeometryInfoResult, get_info_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_DebugGeometry_GetInfo")),
             &id_opaque_tuple,
@@ -1134,46 +1791,44 @@ const DebugGeometry = struct {
     const opacify = TypeInstance.opacify;
 };
 
-const World = struct {
+pub const World = struct {
     physics: *HavokPhysics,
 
-    const OurResult = struct { Result, WorldId };
+    pub const OurResult = struct { Result, WorldId };
 
-    const InternalHandleResult = struct { Result, u32 };
+    var create_impl = &noopImpl;
 
-    pub var create_impl = &noopImpl;
+    var release_impl = &noopImpl;
 
-    pub var release_impl = &noopImpl;
+    var get_body_buffer_impl = &noopImpl;
 
-    pub var get_body_buffer_impl = &noopImpl;
+    var set_gravity_impl = &noopImpl;
 
-    pub var set_gravity_impl = &noopImpl;
+    var add_body_impl = &noopImpl;
+    var remove_body_impl = &noopImpl;
 
-    pub var add_body_impl = &noopImpl;
-    pub var remove_body_impl = &noopImpl;
+    var get_num_bodies_impl = &noopImpl;
 
-    pub var get_num_bodies_impl = &noopImpl;
+    var cast_ray_impl = &noopImpl;
 
-    pub var cast_ray_impl = &noopImpl;
+    var cast_ray_with_collector_impl = &noopImpl;
 
-    pub var cast_ray_with_collector_impl = &noopImpl;
+    var point_proximity_with_collector_impl = &noopImpl;
+    var shape_proximity_with_collector_impl = &noopImpl;
 
-    pub var point_proximity_with_collector_impl = &noopImpl;
-    pub var shape_proximity_with_collector_impl = &noopImpl;
+    var shape_cast_with_collector_impl = &noopImpl;
 
-    pub var shape_cast_with_collector_impl = &noopImpl;
+    var step_impl = &noopImpl;
+    var set_ideal_step_time_impl = &noopImpl;
 
-    pub var step_impl = &noopImpl;
-    pub var set_ideal_step_time_impl = &noopImpl;
+    var set_speed_limit_impl = &noopImpl;
+    var get_speed_limit_impl = &noopImpl;
 
-    pub var set_speed_limit_impl = &noopImpl;
-    pub var get_speed_limit_impl = &noopImpl;
+    var get_collision_events_impl = &noopImpl;
+    var get_next_collision_event_impl = &noopImpl;
 
-    pub var get_collision_events_impl = &noopImpl;
-    pub var get_next_collision_event_impl = &noopImpl;
-
-    pub var get_trigger_events_impl = &noopImpl;
-    pub var get_next_trigger_event_impl = &noopImpl;
+    var get_trigger_events_impl = &noopImpl;
+    var get_next_trigger_event_impl = &noopImpl;
 
     /// Allocate a new handle for a world, which is the basis of a simulation.
     pub fn create(self: *const @This()) OurResult {
@@ -1268,20 +1923,6 @@ const World = struct {
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_World_GetNumBodies"),
             &id_opaque_tuple,
-        ));
-    }
-
-    /// Advanced use only. Perform a raycast using structures preallocated in the WASM memory.
-    /// `world` should be the address of an HP_World, `query` should be the address of a RayCastInput, and
-    /// `result` should be the address of a buffer of `max_results` RaycastResult. Returns the number of hits.
-    pub fn castRay(self: *const @This(), world: u32, query: u32, result: u32, max_results: i32) i32 {
-        return castOpaque(i32, cast_ray_impl(
-            self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_CastRay"),
-            &world,
-            &query,
-            &result,
-            &max_results,
         ));
     }
 
@@ -1486,6 +2127,26 @@ const World = struct {
         ));
     }
 
+    /// Get the next collision event, following `previous_event`.
+    pub fn getNextCollisionEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
+        return castOpaque(u32, get_next_collision_event_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetNextCollisionEvent"),
+            &world,
+            &previous_event,
+        ));
+    }
+
+    /// Get the first trigger event generated by the previous world step.
+    pub fn getNextTriggerEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
+        return castOpaque(u32, get_next_trigger_event_impl(
+            self.physics,
+            comptime cached_function_indices.getDefinitely("HP_World_GetNextTriggerEvent"),
+            &world,
+            &previous_event,
+        ));
+    }
+
     /// Get the first collision event generated by the previous world step.
     pub fn getCollisionEvents(self: *const @This(), id: WorldId) InternalHandleResult {
         const id_opaque_array = opacifyTupleElements(WorldId, &id);
@@ -1495,16 +2156,6 @@ const World = struct {
             self.physics,
             comptime cached_function_indices.getDefinitely("HP_World_GetCollisionEvents"),
             &id_opaque_tuple,
-        ));
-    }
-
-    /// Get the next collision event, following `previous_event`.
-    pub fn getNextCollisionEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
-        return castOpaque(u32, get_next_collision_event_impl(
-            self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetNextCollisionEvent"),
-            &world,
-            &previous_event,
         ));
     }
 
@@ -1520,13 +2171,17 @@ const World = struct {
         ));
     }
 
-    /// Get the first trigger event generated by the previous world step.
-    pub fn getNextTriggerEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
-        return castOpaque(u32, get_next_trigger_event_impl(
+    /// Advanced use only. Perform a raycast using structures preallocated in the WASM memory.
+    /// `world` should be the address of an HP_World, `query` should be the address of a RayCastInput, and
+    /// `result` should be the address of a buffer of `max_results` RaycastResult. Returns the number of hits.
+    pub fn castRay(self: *const @This(), world: u32, query: u32, result: u32, max_results: i32) i32 {
+        return castOpaque(i32, cast_ray_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetNextTriggerEvent"),
+            comptime cached_function_indices.getDefinitely("HP_World_CastRay"),
             &world,
-            &previous_event,
+            &query,
+            &result,
+            &max_results,
         ));
     }
 
@@ -1540,66 +2195,7 @@ const World = struct {
 
 shape: Shape,
 debug_geometry: DebugGeometry,
-body: struct {
-    physics: *HavokPhysics,
-
-    // zig fmt: off
-
-    pub fn create(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_Body_Create", .{a}); }
-    pub fn release(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_Body_Release", .{a}); }
-
-    pub fn setShape(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetShape", .{a, b}); }
-    pub fn getShape(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetShape", .{a, b}); }
-
-    pub fn setMotionType(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetMotionType", .{a, b}); }
-    pub fn getMotionType(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetMotionType", .{a, b}); }
-
-    pub fn setEventMask(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetEventMask", .{a, b}); }
-    pub fn getEventMask(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetEventMask", .{a, b}); }
-
-    pub fn setMassProperties(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetMassProperties", .{a, b}); }
-    pub fn getMassProperties(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetMassProperties", .{a, b}); }
-
-    pub fn setLinearDamping(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetLinearDamping", .{a, b}); }
-    pub fn getLinearDamping(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetLinearDamping", .{a, b}); }
-
-    pub fn setAngularDamping(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetAngularDamping", .{a, b}); }
-    pub fn getAngularDamping(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetAngularDamping", .{a, b}); }
-
-    pub fn setGravityFactor(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetGravityFactor", .{a, b}); }
-    pub fn getGravityFactor(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetGravityFactor", .{a, b}); }
-
-    pub fn getWorld(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetWorld", .{a, b}); }
-    pub fn getWorldTransformOffset(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetWorldTransformOffset", .{a, b}); }
-
-    pub fn setPosition(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetPosition", .{a, b}); }
-    pub fn getPosition(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetPosition", .{a, b}); }
-
-    pub fn setOrientation(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetOrientation", .{a, b}); }
-    pub fn getOrientation(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetOrientation", .{a, b}); }
-
-    pub fn setQTransform(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetQTransform", .{a, b}); }
-    pub fn getQTransform(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetQTransform", .{a, b}); }
-
-    pub fn setTargetQTransform(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetTargetQTransform", .{a, b}); }
-
-    pub fn setLinearVelocity(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetLinearVelocity", .{a, b}); }
-    pub fn getLinearVelocity(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetLinearVelocity", .{a, b}); }
-
-    pub fn setAngularVelocity(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetAngularVelocity", .{a, b}); }
-    pub fn getAngularVelocity(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetAngularVelocity", .{a, b}); }
-
-    pub fn applyImpulse(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Body_ApplyImpulse", .{a, b, c}); }
-    pub fn applyAngularImpulse(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_ApplyAngularImpulse", .{a, b}); }
-
-    pub fn setActivationState(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetActivationState", .{a, b}); }
-    pub fn getActivationState(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_GetActivationState", .{a, b}); }
-
-    pub fn setActivationControl(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetActivationControl", .{a, b}); }
-    pub fn setActivationPriority(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Body_SetActivationPriority", .{a, b}); }
-
-    // zig fmt: on
-},
+body: Body,
 constraint: struct {
     physics: *HavokPhysics,
 
@@ -1696,7 +2292,7 @@ allocator: mem.Allocator,
 
 aot_buf: []align(8) u8,
 
-heap_buf: []align(8) u8,
+heap_buf: []u8 align(8),
 
 module: wamr.wasm_module_t = null,
 module_inst: wamr.wasm_module_inst_t = null,
@@ -1719,8 +2315,6 @@ embind_awaiting_dependencies: Emscripten.Bind.AwaitingDependencies,
 
 embind_invoker_contexts: [cached_function_indices.kvs.len]?*Emscripten.Bind.InvokerContext = @splat(null),
 
-embind_invoker_function_indices: std.StringHashMap(usize),
-
 embind_temp_arena: heap.ArenaAllocator,
 /// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
 embind_temp_allocator: mem.Allocator,
@@ -1731,7 +2325,9 @@ const stack_size: u32 = 64 * 1024;
 
 const heap_size: u32 = 1073741824;
 
-fn abort_js(_: wamr.wasm_exec_env_t) callconv(.c) void {}
+fn abort_js(_: wamr.wasm_exec_env_t) callconv(.c) void {
+    @panic("Aborted()");
+}
 
 fn emscripten_get_heap_max(_: wamr.wasm_exec_env_t) callconv(.c) i32 {
     return heap_size;
@@ -2540,7 +3136,7 @@ fn embind_register_function(
                         return &.{};
                     };
 
-                    const function_index = physics_inner.embind_invoker_function_indices.get(register_context_inner.name) orelse {
+                    const function_index = cached_function_indices.getRuntime(register_context_inner.name) orelse {
                         invoker_type_instances.deinit();
 
                         return &.{};
@@ -2824,13 +3420,11 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
         .embind_arena = undefined,
         .embind_allocator = undefined,
 
-        .embind_type_registry = .init(allocator),
+        .embind_type_registry = undefined,
 
-        .embind_tuple_registry = .init(allocator),
+        .embind_tuple_registry = undefined,
 
-        .embind_awaiting_dependencies = .init(allocator),
-
-        .embind_invoker_function_indices = .init(allocator),
+        .embind_awaiting_dependencies = undefined,
 
         .embind_temp_arena = undefined,
         .embind_temp_allocator = undefined,
@@ -2847,14 +3441,19 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     // Copy buf onto aot_buf
     @memcpy(physics.aot_buf, aot_buf_raw);
 
-    physics.embind_arena = .init(allocator);
-    physics.embind_allocator = physics.embind_arena.allocator();
+    {
+        physics.embind_arena = .init(allocator);
+        physics.embind_allocator = physics.embind_arena.allocator();
+
+        physics.embind_type_registry = .init(physics.embind_allocator);
+
+        physics.embind_tuple_registry = .init(physics.embind_allocator);
+
+        physics.embind_awaiting_dependencies = .init(physics.embind_allocator);
+    }
 
     physics.embind_temp_arena = .init(allocator);
     physics.embind_temp_allocator = physics.embind_temp_arena.allocator();
-
-    for (function_names, 0..) |function_name, i| // Add function indices
-        try physics.embind_invoker_function_indices.put(function_name, i);
 
     var init_args: wamr.RuntimeInitArgs = .{};
 
@@ -2978,15 +3577,6 @@ pub fn deinit(self: *HavokPhysics) void {
 
     { // Free embind's
         self.embind_arena.deinit();
-
-        self.embind_type_registry.deinit();
-
-        self.embind_tuple_registry.deinit();
-
-        self.embind_awaiting_dependencies.deinit();
-
-        self.embind_invoker_function_indices.deinit();
-
         self.embind_temp_arena.deinit();
     }
 
@@ -3197,7 +3787,7 @@ const function_names = [_][]const u8{
     "__wasm_call_ctors",
 };
 
-const CachedFunctionIndices = comptime_string_map.ComptimeStringMap(comptime_int);
+const CachedFunctionIndices = comptime_string_map.ComptimeStringMap(usize);
 
 const cached_function_indices: CachedFunctionIndices = blk: {
     var kvs: CachedFunctionIndices.KeyValues = &.{};
@@ -3326,8 +3916,9 @@ pub fn getIndirectFunction(self: *HavokPhysics, index: u32) !wamr.wasm_function_
 }
 
 /// Resets temp values.
-/// NOTE: This should not called for each physical call (like world.create),
-/// you should block your calls, and deferly call this.
+///
+/// NOTE: This should not called for each physical call (like `world.create`) because of arena's characteristics.
+/// You should block your method calls, then deferly call this.
 pub fn free(self: *HavokPhysics) void {
     _ = self.embind_temp_arena.reset(.retain_capacity);
 }

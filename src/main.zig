@@ -61,6 +61,8 @@ pub fn main() !void {
         while (true) {
             _ = physics.world.step(world_id, dt);
 
+            log.info("{any}", .{ physics.getStatistics() });
+
             Thread.sleep(dt_nanoseconds);
         }
     }

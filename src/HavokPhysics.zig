@@ -87,7 +87,7 @@ const Emscripten = struct {
                     return @as(*allowzero const T, @ptrCast(@alignCast(@"opaque"))).*;
                 }
 
-                /// Note: this function must be called by only outside of this struct.
+                /// NOTE: this function must be called by only outside of this struct.
                 /// The simplex version of this are not implemented.
                 pub fn castOpaque(comptime T: type, @"opaque": Opaque) T {
                     return switch (@typeInfo(T)) {
@@ -317,6 +317,8 @@ fn replaceMethodImpl(
     function: MethodImpl,
 ) void {
     switch (function_index) {
+        cached_function_indices.getDefinitely("HP_GetStatistics") => get_statistics_impl = function,
+
         // Begin shape
 
         cached_function_indices.getDefinitely("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
@@ -557,10 +559,42 @@ const ShapeCastInput = struct {
     BodyId,
 };
 
+const ObjectStatistics = struct {
+    /// Num bodies.
+    i32,
+    /// Num shapes.
+    i32,
+    /// Num constraints.
+    i32,
+    /// Num debug geometries.
+    i32,
+    /// Num worlds.
+    i32,
+    /// Num query collectors.
+    i32,
+};
+
 const IntResult = struct { Result, i32 };
 
 const FloatResult = struct { Result, Float };
 const FloatPairResult = struct { Result, Float, Float };
+
+// Begin flats
+
+const ObjectStatisticsResult = struct { Result, ObjectStatistics };
+
+var get_statistics_impl = &noopImpl;
+
+/// Return statistics on the number of allocated objects.
+pub fn getStatistics(self: *HavokPhysics) ObjectStatisticsResult {
+    const TypeInstance = Emscripten.Bind.Type.Instance;
+
+    const castOpaque = TypeInstance.castOpaque;
+
+    return castOpaque(ObjectStatisticsResult, get_statistics_impl(self, comptime @intCast(cached_function_indices.getDefinitely("HP_GetStatistics"))));
+}
+
+// End flats
 
 const Shape = struct {
     physics: *HavokPhysics,
@@ -1005,7 +1039,7 @@ const Shape = struct {
     /// Any material set on this shape will be unused. This has no effect on container shapes, as they don't have any
     /// geometry themselves.
     ///
-    /// Note: Currently, when one of the shapes overlapping a trigger is a mesh shape, one event will be raised per
+    /// NOTE: Currently, when one of the shapes overlapping a trigger is a mesh shape, one event will be raised per
     /// overlapping triangle. This is subject to change, as it can cause performance issues.
     pub fn setTrigger(self: *const @This(), id: ShapeId, is_trigger: bool) Result {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
@@ -3245,12 +3279,6 @@ pub fn getIndirectFunction(self: *HavokPhysics, index: u32) !wamr.wasm_function_
 pub fn free(self: *HavokPhysics) void {
     _ = self.embind_temp_arena.reset(.retain_capacity);
 }
-
-// zig fmt: off
-
-pub fn getStatistics(self: *HavokPhysics, a: u32) !u32 { return self.callExported("HP_GetStatistics", .{a}); }
-
-// zig fmt: on
 
 const std = @import("std");
 const mem = std.mem;

@@ -3916,7 +3916,8 @@ pub fn getIndirectFunction(self: *HavokPhysics, index: u32) !wamr.wasm_function_
 }
 
 /// Resets temp values.
-///
+/// This does not affect the return values the physical methods returned.
+/// 
 /// NOTE: This should not called for each physical call (like `world.create`) because of arena's characteristics.
 /// You should block your method calls, then deferly call this.
 pub fn free(self: *HavokPhysics) void {

@@ -10,6 +10,8 @@ pub fn main() !void {
     var physics = try HavokPhysics.init(allocator);
     defer physics.deinit();
 
+    var body_outer: Body.OurResult = undefined;
+
     {
         defer physics.free();
 
@@ -68,6 +70,12 @@ pub fn main() !void {
             log.info("q {any}, {any}", .{ result_4, body_id });
 
             log.info("r {any}", .{physics.body.setShape(body_id, container_id)});
+
+            // We want to use the return of `physics.body.create` on the ouside of `physics.free` call
+            // So we dupe those
+            body_outer = .{
+                allocator.dupe(Result, )
+            };
         }
 
         while (true) {
@@ -89,4 +97,6 @@ const Thread = std.Thread;
 const wamr = @import("wamr").wasm_export;
 
 const HavokPhysics = @import("HavokPhysics.zig");
+const Result = HavokPhysics.Result;
+const Body = HavokPhysics.Body;
 const Float = HavokPhysics.Float;

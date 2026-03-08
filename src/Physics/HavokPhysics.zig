@@ -1,4 +1,4 @@
-const HavokPhysics = @This();
+const Physics = @This();
 
 /// Shared float type between physical methods.
 pub const Float = f32;
@@ -24,7 +24,7 @@ const Emscripten = struct {
 
             pub const Instance = struct {
                 // pub const Destructor = union(enum) {
-                //     native: *const fn (physics: *HavokPhysics, ...) callconv(.c) void,
+                //     native: *const fn (physics: *Physics, ...) callconv(.c) void,
                 //     wasm: wamr.wasm_function_inst_t,
                 // };
 
@@ -46,7 +46,7 @@ const Emscripten = struct {
                 kind: Kind,
 
                 /// Physics instance to use in WAMR.
-                physics: *HavokPhysics,
+                physics: *Physics,
 
                 destructor: Destructor = null,
 
@@ -241,7 +241,7 @@ const Emscripten = struct {
             pub const Converters = []*const Instance;
 
             pub const ConvertersHandler = *const fn (
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context: *anyopaque,
                 converters: Converters,
             ) Converters;
@@ -304,9 +304,9 @@ const Emscripten = struct {
     };
 };
 
-const MethodImpl = *const fn (physics: *HavokPhysics, invoker_context_index: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque;
+const MethodImpl = *const fn (physics: *Physics, invoker_context_index: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque;
 
-fn noopImpl(_: *HavokPhysics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
+fn noopImpl(_: *Physics, _: u8, ...) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
     return @ptrFromInt(0); // Undefined
 }
 
@@ -471,7 +471,7 @@ fn replaceMethodImpl(
 }
 
 /// Basic free destructor of pointer.
-fn freeDesturctor(physics: *HavokPhysics, ptr: u32) callconv(.c) void {
+fn freeDesturctor(physics: *Physics, ptr: u32) callconv(.c) void {
     _ = physics.callExportedSimple("free", .{ptr}) catch unreachable;
 }
 
@@ -700,7 +700,7 @@ pub const FloatPairResult = struct { Result, Float, Float };
 var get_statistics_impl = &noopImpl;
 
 /// Return statistics on the number of allocated objects.
-pub fn getStatistics(self: *HavokPhysics) ObjectStatisticsResult {
+pub fn getStatistics(self: *Physics) ObjectStatisticsResult {
     const TypeInstance = Emscripten.Bind.Type.Instance;
 
     const castOpaque = TypeInstance.castOpaque;
@@ -713,7 +713,7 @@ pub fn getStatistics(self: *HavokPhysics) ObjectStatisticsResult {
 pub const InternalHandleResult = Uint32Result;
 
 pub const Shape = struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     pub const OurResult = struct { Result, ShapeId };
 
@@ -1171,7 +1171,7 @@ pub const Shape = struct {
 };
 
 pub const Body = struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     pub const OurResult = struct { Result, BodyId };
 
@@ -1737,7 +1737,7 @@ pub const Body = struct {
 };
 
 pub const DebugGeometry = struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     pub const OurResult = struct { Result, DebugGeometryId };
 
@@ -1792,7 +1792,7 @@ pub const DebugGeometry = struct {
 };
 
 pub const World = struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     pub const OurResult = struct { Result, WorldId };
 
@@ -2197,7 +2197,7 @@ shape: Shape,
 debug_geometry: DebugGeometry,
 body: Body,
 constraint: struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     // zig fmt: off
 
@@ -2261,7 +2261,7 @@ constraint: struct {
 },
 world: World,
 query_collector: struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     // zig fmt: off
 
@@ -2278,7 +2278,7 @@ query_collector: struct {
     // zig fmt: on
 },
 debug: struct {
-    physics: *HavokPhysics,
+    physics: *Physics,
 
     // zig fmt: off
 
@@ -2349,7 +2349,7 @@ fn emscripten_get_now_is_monotonic(_: wamr.wasm_exec_env_t) callconv(.c) i32 {
     return 1;
 }
 
-fn readLatin1String(physics: *HavokPhysics, ptr: u32) ![]u8 {
+fn readLatin1String(physics: *Physics, ptr: u32) ![]u8 {
     const allocator = physics.embind_allocator;
 
     const raw_ptr = wamr.wasm_runtime_addr_app_to_native(physics.module_inst, ptr);
@@ -2383,7 +2383,7 @@ fn readLatin1String(physics: *HavokPhysics, ptr: u32) ![]u8 {
 const RegisteredCounter = atomic.Value(u16);
 
 fn whenDependentTypesAreResolvedOnComplete(
-    self: *HavokPhysics,
+    self: *Physics,
     context: *anyopaque,
     ids: []const Emscripten.Bind.Type.Id,
     converters_handler: Emscripten.Bind.Type.ConvertersHandler,
@@ -2404,7 +2404,7 @@ fn whenDependentTypesAreResolvedOnComplete(
 }
 
 fn whenDependentTypesAreResolved(
-    self: *HavokPhysics,
+    self: *Physics,
     context: *anyopaque,
     ids: []const Emscripten.Bind.Type.Id,
     dependent_ids: []const Emscripten.Bind.Type.Id,
@@ -2482,7 +2482,7 @@ fn whenDependentTypesAreResolved(
     }
 }
 
-fn getPhysics(exec_env: wamr.wasm_exec_env_t) ?*HavokPhysics {
+fn getPhysics(exec_env: wamr.wasm_exec_env_t) ?*Physics {
     return if (wamr.wasm_runtime_get_function_attachment(exec_env)) |attachment|
         @ptrCast(@alignCast(attachment))
     else
@@ -2715,7 +2715,7 @@ fn createMethodSignature(
 fn createMethodImplInner(signature: MethodSignature) MethodImpl {
     return switch (signature) {
         .ftf => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
+            fn impl(physics: *Physics, context_index: u8) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const return_wire = physics.call(context.invoker, &.{context.function_wire}) catch unreachable;
@@ -2724,7 +2724,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
             }
         }.impl),
         .ftfn => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
+            fn impl(physics: *Physics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0, false);
@@ -2735,7 +2735,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
             }
         }.impl),
         .fffn => @ptrCast(&struct { // We here want to constantly change Return to void, but it may be broken in later changes
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
+            fn impl(physics: *Physics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0, false);
@@ -2747,7 +2747,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftfnnnn => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2774,7 +2774,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftfnn => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2791,7 +2791,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftftt => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2821,7 +2821,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
             }
         }.impl),
         .ftft => @ptrCast(&struct {
-            fn impl(physics: *HavokPhysics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
+            fn impl(physics: *Physics, context_index: u8, arg_0: Emscripten.Bind.Type.Instance.Opaque) callconv(.c) Emscripten.Bind.Type.Instance.Opaque {
                 const context = physics.embind_invoker_contexts[context_index] orelse unreachable;
 
                 const arg_0_wired = context.arg_type_instances[0].toWire(arg_0, false);
@@ -2837,7 +2837,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftftn => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2858,7 +2858,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftftnn => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2881,7 +2881,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftfttn => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2905,7 +2905,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftfttt => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2930,7 +2930,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftfnntn => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2961,7 +2961,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
         }.impl),
         .ftftttt => @ptrCast(&struct {
             fn impl(
-                physics: *HavokPhysics,
+                physics: *Physics,
                 context_index: u8,
                 arg_0: Emscripten.Bind.Type.Instance.Opaque,
                 arg_1: Emscripten.Bind.Type.Instance.Opaque,
@@ -2997,7 +2997,7 @@ fn createMethodImplInner(signature: MethodSignature) MethodImpl {
 }
 
 fn createMethodImpl(
-    self: *HavokPhysics,
+    self: *Physics,
     /// Must not be deinited after this function called.
     /// Parent's array list will be deinited when arena's deinit is called.
     type_instances: []?*const Emscripten.Bind.Type.Instance,
@@ -3104,7 +3104,7 @@ fn embind_register_function(
             dependent_type_ids,
             struct {
                 fn impl(
-                    physics_inner: *HavokPhysics,
+                    physics_inner: *Physics,
                     context: *anyopaque,
                     converters: Emscripten.Bind.Type.Converters,
                 ) Emscripten.Bind.Type.Converters {
@@ -3350,7 +3350,7 @@ fn embind_finalize_value_array(
                 },
                 struct {
                     fn impl(
-                        physics_inner: *HavokPhysics,
+                        physics_inner: *Physics,
                         context: *anyopaque,
                         converters: Emscripten.Bind.Type.Converters,
                     ) Emscripten.Bind.Type.Converters {
@@ -3404,8 +3404,8 @@ fn emval_run_destructors(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {}
 
 fn fd_write(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32, _: i32) callconv(.c) void {}
 
-pub fn init(allocator: mem.Allocator) !*HavokPhysics {
-    var physics = try allocator.create(HavokPhysics);
+pub fn init(allocator: mem.Allocator) !*Physics {
+    var physics = try allocator.create(Physics);
     errdefer allocator.destroy(physics);
 
     physics.* = .{
@@ -3558,7 +3558,7 @@ pub fn init(allocator: mem.Allocator) !*HavokPhysics {
     return physics;
 }
 
-pub fn deinit(self: *HavokPhysics) void {
+pub fn deinit(self: *Physics) void {
     const allocator = self.allocator;
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
@@ -3584,7 +3584,7 @@ pub fn deinit(self: *HavokPhysics) void {
 }
 
 fn registerNativeSymbols(
-    _: *const HavokPhysics,
+    _: *const Physics,
     comptime module_name: [*c]const u8,
     native_symbols: []wamr.NativeSymbol,
 ) !void {
@@ -3597,7 +3597,7 @@ fn registerNativeSymbols(
 }
 
 pub fn registerType(
-    self: *HavokPhysics,
+    self: *Physics,
     id: Emscripten.Bind.Type.Id,
     instance: *const Emscripten.Bind.Type.Instance,
 ) anyerror!void {
@@ -3798,7 +3798,7 @@ const cached_function_indices: CachedFunctionIndices = blk: {
     break :blk .initComptime(kvs);
 };
 
-pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+pub fn call(self: *Physics, function: wamr.wasm_function_inst_t, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
     var argv: [16]u32 = undefined;
     var argv_len: u32 = 0;
 
@@ -3833,11 +3833,11 @@ pub fn call(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: []co
     return argv[0];
 }
 
-pub fn callExported(self: *HavokPhysics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+pub fn callExported(self: *Physics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
     return self.call(try self.getExportedFunction(name), args);
 }
 
-pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
+pub fn callSimple(self: *Physics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
     const args_info_struct_fields = @typeInfo(@TypeOf(args)).@"struct".fields;
 
     var argv: [args_info_struct_fields.len]u32 = undefined;
@@ -3861,12 +3861,12 @@ pub fn callSimple(self: *HavokPhysics, function: wamr.wasm_function_inst_t, args
     return argv[0];
 }
 
-pub fn callExportedSimple(self: *HavokPhysics, comptime name: [:0]const u8, args: anytype) !u32 {
+pub fn callExportedSimple(self: *Physics, comptime name: [:0]const u8, args: anytype) !u32 {
     return self.callSimple(try self.getExportedFunction(name), args);
 }
 
 /// You must use this function if your arguments is empty.
-pub fn callVoid(self: *HavokPhysics, function: wamr.wasm_function_inst_t) !u32 {
+pub fn callVoid(self: *Physics, function: wamr.wasm_function_inst_t) !u32 {
     var argv: [1]u32 = undefined;
 
     if (!wamr.wasm_runtime_call_wasm(
@@ -3886,11 +3886,11 @@ pub fn callVoid(self: *HavokPhysics, function: wamr.wasm_function_inst_t) !u32 {
 }
 
 /// You must use this function if your function is exported and arguments is empty.
-pub fn callExportedVoid(self: *HavokPhysics, comptime name: [:0]const u8) !u32 {
+pub fn callExportedVoid(self: *Physics, comptime name: [:0]const u8) !u32 {
     return self.callVoid(try self.getExportedFunction(name));
 }
 
-pub fn getExportedFunction(self: *HavokPhysics, comptime name: [:0]const u8) !wamr.wasm_function_inst_t {
+pub fn getExportedFunction(self: *Physics, comptime name: [:0]const u8) !wamr.wasm_function_inst_t {
     const function_index = comptime cached_function_indices.get(name) orelse
         @compileError(fmt.comptimePrint("uncached function name: {s}", .{name}));
 
@@ -3905,7 +3905,7 @@ pub fn getExportedFunction(self: *HavokPhysics, comptime name: [:0]const u8) !wa
     };
 }
 
-pub fn getIndirectFunction(self: *HavokPhysics, index: u32) !wamr.wasm_function_inst_t {
+pub fn getIndirectFunction(self: *Physics, index: u32) !wamr.wasm_function_inst_t {
     return self.cached_indirect_functions.get(index) orelse blk: {
         const function = wamr.wasm_table_get_func_inst(self.module_inst, &self.table_inst, index);
 
@@ -3915,12 +3915,10 @@ pub fn getIndirectFunction(self: *HavokPhysics, index: u32) !wamr.wasm_function_
     };
 }
 
-/// Resets temp values.
-/// This does not affect the return values the physical methods returned.
-/// 
-/// NOTE: This should not called for each physical call (like `world.create`) because of arena's characteristics.
-/// You should block your method calls, then deferly call this.
-pub fn free(self: *HavokPhysics) void {
+/// Resets temp values. This does not affect the return values the physical methods returned.
+/// NOTE: This should not be called for each physical call (like world.create) because of arena's characteristics,
+/// therefore you should blockize your method calls, then call this in the block as defer.
+pub fn free(self: *Physics) void {
     _ = self.embind_temp_arena.reset(.retain_capacity);
 }
 

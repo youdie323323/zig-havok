@@ -7,7 +7,7 @@ pub fn main() !void {
 
     const allocator = da.allocator();
 
-    var physics = try HavokPhysics.init(allocator);
+    var physics = try Physics.init(allocator);
     defer physics.deinit();
 
     {
@@ -88,7 +88,8 @@ const Thread = std.Thread;
 
 const wamr = @import("wamr").wasm_export;
 
-const HavokPhysics = @import("HavokPhysics.zig");
-const Result = HavokPhysics.Result;
-const Body = HavokPhysics.Body;
-const Float = HavokPhysics.Float;
+const havok = @import("havok");
+const Physics = havok.Physics;
+const Result = Physics.Result;
+const Body = Physics.Body;
+const Float = Physics.Float;

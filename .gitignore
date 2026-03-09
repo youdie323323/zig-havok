@@ -1,2 +1,4 @@
 zig-out/
 .zig-cache/
+open_vscode.bat
+strings.txt

@@ -88,8 +88,7 @@ const Thread = std.Thread;
 
 const wamr = @import("wamr").wasm_export;
 
-const havok = @import("havok");
-const Physics = havok.Physics;
+const Physics = @import("havok").Physics;
 const Result = Physics.Result;
 const Body = Physics.Body;
 const Float = Physics.Float;

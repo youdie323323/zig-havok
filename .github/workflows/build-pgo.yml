@@ -60,6 +60,9 @@ jobs:
                 -o src/Physics/binary/x86_64/HavokPhysics.aot \
                 src/Physics/binary/HavokPhysics.wasm
 
+          zig build
+          ./zig-out/bin/havok
+
       - uses: actions/upload-artifact@v6
         with:
           name: wamr-pgo-results

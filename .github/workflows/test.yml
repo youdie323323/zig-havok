@@ -1,0 +1,57 @@
+name: WAMR PGO Linux test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-pgo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: |
+          WAMR_VERSION="2.4.4"
+
+          wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/v${WAMR_VERSION}/wamrc-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
+          wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/v${WAMR_VERSION}/iwasm-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
+
+          tar -xvf wamrc-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
+          tar -xvf iwasm-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
+
+          sudo mv wamrc /usr/local/bin/
+          sudo mv iwasm /usr/local/bin/
+
+      - run: mkdir -p src/Physics/binary/x86_64
+
+      - run: |
+          wamrc --target=x86_64 \
+                --cpu=x86-64-v3 \
+                --opt-level=3 \
+                --size-level=0 \
+                --enable-simd \
+                --enable-llvm-pgo \
+                --format=aot \
+                -o src/Physics/binary/x86_64/HavokPhysics.aot \
+                src/Physics/binary/HavokPhysics.wasm
+
+          iwasm --gen-prof-file=HavokPhysics.profraw \
+                -f __wasm_call_ctors \
+                src/Physics/binary/x86_64/HavokPhysics.aot
+
+      - run: |
+          ls -lh src/Physics/binary/x86_64/HavokPhysics.aot
+          if [ -f "HavokPhysics.profraw" ]; then
+            echo "Success: HavokPhysics.profraw generated."
+            ls -lh HavokPhysics.profraw
+          else
+            echo "Error: HavokPhysics.profraw not found."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wamr-pgo-results
+          path: |
+            src/Physics/binary/x86_64/HavokPhysics.aot
+            HavokPhysics.profraw

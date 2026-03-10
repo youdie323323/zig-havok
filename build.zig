@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
     {
         const wamr_dep = b.dependency("wamr", .{
             .target = target,
-            .optimize = .ReleaseFast,
+            .optimize = optimize,
         });
 
         mod.addImport("wamr", wamr_dep.module("wamr"));

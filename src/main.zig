@@ -3,12 +3,15 @@ const dt_nanoseconds: u64 = @intFromFloat(dt * time.ns_per_s);
 
 pub fn main() !void {
     var da: heap.DebugAllocator(.{}) = .init;
-    defer _ = da.detectLeaks();
-
     const allocator = da.allocator();
 
     var physics = try Physics.init(allocator);
-    defer physics.deinit();
+
+    defer {
+        physics.deinit();
+
+        _ = da.detectLeaks();
+    }
 
     {
         defer physics.free();
@@ -68,14 +71,6 @@ pub fn main() !void {
             log.info("q {any}, {any}", .{ result_4, body_id });
 
             log.info("r {any}", .{physics.body.setShape(body_id, container_id)});
-        }
-
-        while (true) {
-            _ = physics.world.step(world_id, dt);
-
-            log.info("s {any}", .{physics.getStatistics()});
-
-            Thread.sleep(dt_nanoseconds);
         }
     }
 }

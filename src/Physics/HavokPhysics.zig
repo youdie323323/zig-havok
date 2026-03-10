@@ -3404,6 +3404,19 @@ fn emval_run_destructors(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {}
 
 fn fd_write(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32, _: i32) callconv(.c) void {}
 
+fn allocateLowMemory(size: usize) ![]u8 {
+    const ptr = windows.kernel32.VirtualAlloc(
+        null,
+        size,
+        windows.MEM_COMMIT | windows.MEM_RESERVE,
+        windows.PAGE_EXECUTE_READWRITE,
+    );
+    if (ptr == null)
+        return error.OutOfMemory;
+
+    return @as([*]u8, @ptrCast(ptr))[0..size];
+}
+
 pub fn init(allocator: mem.Allocator) !*Physics {
     var physics = try allocator.create(Physics);
     errdefer allocator.destroy(physics);
@@ -3514,8 +3527,11 @@ pub fn init(allocator: mem.Allocator) !*Physics {
         &error_buf[0],
         @intCast(error_buf.len),
     );
-    if (physics.module == null)
+    if (physics.module == null) {
+        log.err("WAMR load failed: {s}", .{std.mem.sliceTo(&error_buf, 0)});
+
         return error.LoadFailed;
+    }
 
     _ = wamr.wasm_runtime_set_wasi_args_ex(
         physics.module,
@@ -3559,13 +3575,16 @@ pub fn init(allocator: mem.Allocator) !*Physics {
 }
 
 pub fn deinit(self: *Physics) void {
-    const allocator = self.allocator;
+    // Dump before destroy
+    self.dumpPgoProfData("physics.profraw") catch {};
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);
     if (self.module) |module| wamr.wasm_runtime_unload(module);
 
     wamr.wasm_runtime_destroy();
+
+    const allocator = self.allocator;
 
     { // Free buffers
         allocator.free(self.aot_buf);
@@ -3581,6 +3600,29 @@ pub fn deinit(self: *Physics) void {
     }
 
     allocator.destroy(self);
+}
+
+/// Dumps PGO profile data to the path `path`.
+/// The original of this is `dump_pgo_prof_data`.
+pub fn dumpPgoProfData(self: *Physics, path: []const u8) !void {
+    const len = wamr.wasm_runtime_get_pgo_prof_data_size(self.module_inst);
+    if (len == 0)
+        return error.PgoSizeZero;
+
+    const allocator = self.allocator;
+
+    const buf = try allocator.alloc(u8, len);
+    defer allocator.free(buf);
+
+    if (len != wamr.wasm_runtime_dump_pgo_prof_data_to_buf(self.module_inst, buf.ptr, len))
+        return error.PgoDumpFailed;
+
+    const file = try fs.cwd().createFile(path, .{});
+    defer file.close();
+
+    try file.writeAll(buf[0..len]);
+
+    log.debug("LLVM raw profile file {s} was generated", .{path});
 }
 
 fn registerNativeSymbols(
@@ -3934,6 +3976,9 @@ const atomic = std.atomic;
 const math = std.math;
 const heap = std.heap;
 const meta = std.meta;
+const fs = std.fs;
+const os = std.os;
+const windows = os.windows;
 
 const wamr = @import("wamr").wasm_export;
 

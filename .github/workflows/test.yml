@@ -47,8 +47,8 @@ jobs:
 
           zig build
           ./zig-out/bin/havok
-      
-      - run: ${LLVM_PATH}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
+
+      - run: ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
       - uses: actions/upload-artifact@v6
         with:

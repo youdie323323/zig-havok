@@ -16,7 +16,7 @@ jobs:
 
       - run: |
           sudo apt-get update
-          sudo apt-get install -y cmake
+          sudo apt-get install -y cmake libtinfo5
 
       - uses: KyleMayes/install-llvm-action@v2
         with:

@@ -33,7 +33,7 @@ jobs:
           sudo mv wamrc /usr/local/bin/
 
       - run: |
-          SIZE_LEVEL="0"
+          SIZE_LEVEL="1"
 
           chmod +x ./iwasm
 
@@ -55,7 +55,7 @@ jobs:
           wamrc --target=x86_64-pc-windows-msvc \
                 --cpu=x86-64-v3 \
                 --opt-level=3 \
-                --size-level=1 \
+                --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --use-prof-file=HavokPhysics.profdata \
                 --format=aot \

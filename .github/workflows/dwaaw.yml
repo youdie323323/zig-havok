@@ -1,10 +1,10 @@
-name: Apply PGO
+name: dwawada
 
 on:
   workflow_dispatch:
 
 jobs:
-  apply-pgo:
+  gawgwa:
     runs-on: ubuntu-22.04
 
     steps:
@@ -52,21 +52,7 @@ jobs:
           ./zig-out/bin/havok
 
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
-
-          wamrc --target=x86_64-pc-windows-msvc \
-                --cpu=x86-64-v3 \
-                --opt-level=${OPT_LEVEL} \
-                --size-level=${SIZE_LEVEL} \
-                --enable-simd \
-                --use-prof-file=HavokPhysics.profdata \
-                --format=aot \
-                -o src/Physics/binary/x86_64/HavokPhysics.aot \
-                src/Physics/binary/HavokPhysics.wasm
-
-          zig build
-          ./zig-out/bin/havok
-
       - uses: actions/upload-artifact@v6
         with:
           name: apply-pgo-result
-          path: src/Physics/binary/x86_64/HavokPhysics.aot
+          path: HavokPhysics.profdata

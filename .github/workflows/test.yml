@@ -43,8 +43,6 @@ jobs:
           zig build
           ./zig-out/bin/havok
 
-          ./iwasm --gen-prof-file=HavokPhysics.profraw -f __wasm_call_ctors src/Physics/binary/x86_64/HavokPhysics.aot
-
       - uses: actions/upload-artifact@v6
         with:
           name: wamr-pgo-results

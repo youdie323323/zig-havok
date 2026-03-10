@@ -10,6 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
       - run: |
           WAMR_VERSION="2.4.4"
 
@@ -22,8 +26,6 @@ jobs:
           sudo mv wamrc /usr/local/bin/
           sudo mv iwasm /usr/local/bin/
 
-      - run: mkdir -p src/Physics/binary/x86_64
-
       - run: |
           wamrc --target=x86_64 \
                 --cpu=x86-64-v3 \
@@ -35,19 +37,9 @@ jobs:
                 -o src/Physics/binary/x86_64/HavokPhysics.aot \
                 src/Physics/binary/HavokPhysics.wasm
 
-          iwasm --gen-prof-file=HavokPhysics.profraw \
-                -f __wasm_call_ctors \
-                src/Physics/binary/x86_64/HavokPhysics.aot
-
       - run: |
-          ls -lh src/Physics/binary/x86_64/HavokPhysics.aot
-          if [ -f "HavokPhysics.profraw" ]; then
-            echo "Success: HavokPhysics.profraw generated."
-            ls -lh HavokPhysics.profraw
-          else
-            echo "Error: HavokPhysics.profraw not found."
-            exit 1
-          fi
+          zig build
+          ./zig-out/bin/havok
 
       - uses: actions/upload-artifact@v6
         with:

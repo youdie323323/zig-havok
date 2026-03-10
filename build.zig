@@ -25,6 +25,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // Enable thin LTO
+    exe.lto = .thin;
+
     {
         const wamr_dep = b.dependency("wamr", .{
             .target = target,

@@ -22,13 +22,10 @@ jobs:
           WAMR_VERSION="2.4.4"
 
           wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-${WAMR_VERSION}/wamrc-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
-          wget https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-${WAMR_VERSION}/iwasm-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
 
           tar -xvf wamrc-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
-          tar -xvf iwasm-${WAMR_VERSION}-x86_64-ubuntu-22.04.tar.gz
 
           sudo mv wamrc /usr/local/bin/
-          sudo mv iwasm /usr/local/bin/
 
       - run: |
           wamrc --target=x86_64 \
@@ -41,13 +38,10 @@ jobs:
                 -o src/Physics/binary/x86_64/HavokPhysics.aot \
                 src/Physics/binary/HavokPhysics.wasm
 
-      - run: |
-          zig build
-          ./zig-out/bin/havok
+          ./iwasm --gen-prof-file=HavokPhysics.profraw -f __wasm_call_ctors src/Physics/binary/x86_64/HavokPhysics.aot
 
       - uses: actions/upload-artifact@v6
         with:
           name: wamr-pgo-results
           path: |
-            src/Physics/binary/x86_64/HavokPhysics.aot
             HavokPhysics.profraw

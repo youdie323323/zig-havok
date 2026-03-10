@@ -731,7 +731,7 @@ pub const Shape = struct {
         u64,
     };
 
-    pub const ShapePathIterResult = struct { Result, PathIterator, i32 };
+    pub const PathIterResult = struct { Result, PathIterator, i32 };
 
     var create_sphere_impl = &noopImpl;
     var create_capsule_impl = &noopImpl;
@@ -1133,11 +1133,11 @@ pub const Shape = struct {
     }
 
     /// Allows descending a hierarchy of shape containers, advancing `current_item` to the next entry.
-    pub fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) ShapePathIterResult {
+    pub fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIterResult {
         const current_item_opaque_array = opacifyTupleElements(PathIterator, &current_item);
         const current_item_opaque_tuple: []const Opaque = &current_item_opaque_array;
 
-        return castOpaque(ShapePathIterResult, path_iterator_get_next_impl(
+        return castOpaque(PathIterResult, path_iterator_get_next_impl(
             self.physics,
             comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")),
             &current_item_opaque_tuple,
@@ -3404,19 +3404,6 @@ fn emval_run_destructors(_: wamr.wasm_exec_env_t, _: i32) callconv(.c) void {}
 
 fn fd_write(_: wamr.wasm_exec_env_t, _: i32, _: i32, _: i32, _: i32) callconv(.c) void {}
 
-fn allocateLowMemory(size: usize) ![]u8 {
-    const ptr = windows.kernel32.VirtualAlloc(
-        null,
-        size,
-        windows.MEM_COMMIT | windows.MEM_RESERVE,
-        windows.PAGE_EXECUTE_READWRITE,
-    );
-    if (ptr == null)
-        return error.OutOfMemory;
-
-    return @as([*]u8, @ptrCast(ptr))[0..size];
-}
-
 pub fn init(allocator: mem.Allocator) !*Physics {
     var physics = try allocator.create(Physics);
     errdefer allocator.destroy(physics);
@@ -3519,16 +3506,16 @@ pub fn init(allocator: mem.Allocator) !*Physics {
         try physics.registerNativeSymbols("wasi_snapshot_preview1", &native_symbols_wasi);
     }
 
-    var error_buf = std.mem.zeroes([128]u8);
+    var error_buf: [128]u8 = undefined;
 
     physics.module = wamr.wasm_runtime_load(
         physics.aot_buf.ptr,
-        @intCast(physics.aot_buf.len),
+        comptime @intCast(aot_buf_raw.len),
         &error_buf[0],
-        @intCast(error_buf.len),
+        comptime @intCast(error_buf.len),
     );
     if (physics.module == null) {
-        log.err("WAMR load failed: {s}", .{std.mem.sliceTo(&error_buf, 0)});
+        log.err("WAMR load failed: {s}", .{mem.sliceTo(&error_buf, 0)});
 
         return error.LoadFailed;
     }
@@ -3576,7 +3563,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
 
 pub fn deinit(self: *Physics) void {
     // Dump before destroy
-    self.dumpPGOProfData("HavokPhysics.profraw") catch {};
+    // self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);

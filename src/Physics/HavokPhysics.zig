@@ -3576,7 +3576,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
 
 pub fn deinit(self: *Physics) void {
     // Dump before destroy
-    self.dumpPgoProfData("HavokPhysics.profraw") catch {};
+    self.dumpPGOProfData("HavokPhysics.profraw") catch {};
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);
@@ -3604,7 +3604,7 @@ pub fn deinit(self: *Physics) void {
 
 /// Dumps PGO profile data to the path `path`.
 /// The original of this is `dump_pgo_prof_data`.
-pub fn dumpPgoProfData(self: *Physics, path: []const u8) !void {
+pub fn dumpPGOProfData(self: *Physics, path: []const u8) !void {
     const len = wamr.wasm_runtime_get_pgo_prof_data_size(self.module_inst);
     if (len == 0)
         return error.PgoSizeZero;

@@ -21,7 +21,7 @@ jobs:
       - uses: KyleMayes/install-llvm-action@v2
         with:
           version: "18.1.8"
-          cached: false
+          cached: true
 
       - run: |
           WAMR_VERSION="2.4.4"
@@ -48,9 +48,19 @@ jobs:
           zig build
           ./zig-out/bin/havok
 
-      - run: ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
+          ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
+
+          wamrc --target=x86_64 \
+                --cpu=x86-64-v3 \
+                --opt-level=3 \
+                --size-level=1 \
+                --enable-simd \
+                --use-prof-file=HavokPhysics.profdata \
+                --format=aot \
+                -o src/Physics/binary/x86_64/HavokPhysics.aot
+                src/Physics/binary/HavokPhysics.wasm
 
       - uses: actions/upload-artifact@v6
         with:
           name: wamr-pgo-results
-          path: HavokPhysics.profdata
+          path: src/Physics/binary/x86_64/HavokPhysics.aot

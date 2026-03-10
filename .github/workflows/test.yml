@@ -28,6 +28,8 @@ jobs:
           sudo mv wamrc /usr/local/bin/
 
       - run: |
+          chmod +x ./iwasm
+
           wamrc --target=x86_64 \
                 --cpu=x86-64-v3 \
                 --opt-level=3 \

@@ -30,17 +30,9 @@ jobs:
       - run: |
           chmod +x ./iwasm
 
-          wamrc --target=x86_64 \
-                --cpu=x86-64-v3 \
-                --opt-level=3 \
-                --size-level=0 \
-                --enable-simd \
-                --enable-llvm-pgo \
-                --format=aot \
-                -o src/Physics/binary/x86_64/HavokPhysics.aot \
-                src/Physics/binary/HavokPhysics.wasm
+          wamrc --enable-llvm-pgo --format=aot -o add_one_plus_one.aot add_one_plus_one.wasm
 
-          ./iwasm --gen-prof-file=HavokPhysics.profraw -f __wasm_call_ctors src/Physics/binary/x86_64/HavokPhysics.aot
+          ./iwasm --gen-prof-file=add_one_plus_one.profraw -f add_one_plus_one add_one_plus_one.aot
 
       - uses: actions/upload-artifact@v6
         with:

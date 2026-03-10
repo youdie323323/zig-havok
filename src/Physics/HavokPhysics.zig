@@ -2319,7 +2319,7 @@ embind_temp_arena: heap.ArenaAllocator,
 /// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
 embind_temp_allocator: mem.Allocator,
 
-const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysicsPGO.aot");
+const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");
 
 const stack_size: u32 = 64 * 1024;
 

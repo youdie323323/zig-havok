@@ -19,13 +19,13 @@ pub fn main() !void {
             _ = da.detectLeaks();
         }
 
-        {
+        for (0..10000) |_| {
             defer physics.free();
 
             _, const world_id = physics.world.create();
             defer _ = physics.world.release(world_id);
 
-            {
+            { // Setup world
                 _ = physics.world.setIdealStepTime(world_id, dt);
                 _ = physics.world.getBodyBuffer(world_id);
                 _ = physics.world.setGravity(world_id, .{ 0, -9.807, 0 });
@@ -35,11 +35,13 @@ pub fn main() !void {
             _, const sphere_id = physics.shape.createSphere(.{ 5, 5, 5 }, 0.5);
             defer _ = physics.shape.release(sphere_id);
 
-            {
+            { // Setup sphere
                 _ = physics.shape.setFilterInfo(sphere_id, .{ 1, 1 });
                 _ = physics.shape.getFilterInfo(sphere_id);
+
                 _ = physics.shape.setMaterial(sphere_id, .{ 0.75, 0.75, 0, .artihemic_mean, .artihemic_mean });
                 _ = physics.shape.getMaterial(sphere_id);
+
                 _ = physics.shape.setDensity(sphere_id, 0.5);
                 _ = physics.shape.getDensity(sphere_id);
 

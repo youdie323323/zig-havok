@@ -3563,7 +3563,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
 
 pub fn deinit(self: *Physics) void {
     // Dump before destroy
-    // self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
+    self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);

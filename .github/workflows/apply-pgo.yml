@@ -1,10 +1,10 @@
-name: WAMR PGO Linux test
+name: Apply PGO
 
 on:
   workflow_dispatch:
 
 jobs:
-  verify-pgo:
+  apply-pgo:
     runs-on: ubuntu-22.04
 
     steps:
@@ -65,5 +65,5 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: wamr-pgo-results
+          name: apply-pgo-result
           path: src/Physics/binary/x86_64/HavokPhysics.aot

@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .wamr = .{
-            .url = "git+https://github.com/youdie323323/wamr-zig#516f0474c02a909494ea1cab91a3c11df6cd8d89",
-            .hash = "wamr-0.0.0-lFSRzeRGAACIRahFE2O1So5-kkKQsWcOyO9Htzbnuxk_",
+            .url = "git+https://github.com/youdie323323/wamr-zig#54704fc5f0f98cfc383cbca1527f65ae4a86992f",
+            .hash = "wamr-0.0.0-lFSRzSNHAADuRMPNQjJhwBxJaJFDFkXe_QEnQtd49f4V",
         },
     },
     .paths = .{

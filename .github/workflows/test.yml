@@ -21,7 +21,7 @@ jobs:
       - uses: KyleMayes/install-llvm-action@v2
         with:
           version: "18.1.8"
-          cached: true
+          cached: false
 
       - run: |
           WAMR_VERSION="2.4.4"

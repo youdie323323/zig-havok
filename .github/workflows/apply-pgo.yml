@@ -61,10 +61,10 @@ jobs:
                 --enable-simd \
                 --use-prof-file=HavokPhysics.profdata \
                 --format=aot \
-                -o src/Physics/binary/x86_64/HavokPhysics.aot \
+                -o src/Physics/binary/x86_64/HavokPhysicsPGO.aot \
                 src/Physics/binary/HavokPhysics.wasm
 
       - uses: actions/upload-artifact@v6
         with:
           name: apply-pgo-result
-          path: src/Physics/binary/x86_64/HavokPhysics.aot
+          path: src/Physics/binary/x86_64/HavokPhysicsPGO.aot

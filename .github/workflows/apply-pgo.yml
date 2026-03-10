@@ -33,14 +33,15 @@ jobs:
           sudo mv wamrc /usr/local/bin/
 
       - run: |
-          # Fancy behaviour: size-level 1 here and redo wamrc within HavokPhysics.profdata with size-level 0 works somehow
+          OPT_LEVEL="3"
+          SIZE_LEVEL="1"
 
           chmod +x ./iwasm
 
           wamrc --target=x86_64 \
                 --cpu=x86-64-v3 \
-                --opt-level="3" \
-                --size-level="1" \
+                --opt-level=${OPT_LEVEL} \
+                --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --enable-llvm-pgo \
                 --format=aot \
@@ -52,7 +53,17 @@ jobs:
 
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
+          wamrc --target=x86_64-pc-windows-msvc \
+                --cpu=x86-64-v3 \
+                --opt-level=${OPT_LEVEL} \
+                --size-level=${SIZE_LEVEL} \
+                --enable-simd \
+                --use-prof-file=HavokPhysics.profdata \
+                --format=aot \
+                -o src/Physics/binary/x86_64/HavokPhysics.aot \
+                src/Physics/binary/HavokPhysics.wasm
+
       - uses: actions/upload-artifact@v6
         with:
           name: apply-pgo-result
-          path: HavokPhysics.profdata
+          path: src/Physics/binary/x86_64/HavokPhysics.aot

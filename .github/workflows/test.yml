@@ -38,4 +38,4 @@ jobs:
         with:
           name: wamr-pgo-results
           path: |
-            HavokPhysics.profraw
+            add_one_plus_one.profraw

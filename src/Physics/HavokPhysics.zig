@@ -2319,7 +2319,7 @@ embind_temp_arena: heap.ArenaAllocator,
 /// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
 embind_temp_allocator: mem.Allocator,
 
-const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");
+const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysicsPGO.aot");
 
 const stack_size: u32 = 64 * 1024;
 
@@ -3563,7 +3563,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
 
 pub fn deinit(self: *Physics) void {
     // Dump before destroy
-    self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
+    // self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);

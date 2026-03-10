@@ -33,12 +33,14 @@ jobs:
           sudo mv wamrc /usr/local/bin/
 
       - run: |
+          SIZE_LEVEL="0"
+
           chmod +x ./iwasm
 
           wamrc --target=x86_64 \
                 --cpu=x86-64-v3 \
                 --opt-level=3 \
-                --size-level=1 \
+                --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --enable-llvm-pgo \
                 --format=aot \
@@ -53,7 +55,7 @@ jobs:
           wamrc --target=x86_64 \
                 --cpu=x86-64-v3 \
                 --opt-level=3 \
-                --size-level=1 \
+                --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --use-prof-file=HavokPhysics.profdata \
                 --format=aot \

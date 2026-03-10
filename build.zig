@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
 
     // Enable thin LTO
     // TODO: not working with linux (maybe with macos too)
-    // exe.lto = .thin;
+    exe.lto = .thin;
 
     {
         const wamr_dep = b.dependency("wamr", .{

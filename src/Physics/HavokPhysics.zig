@@ -2290,7 +2290,7 @@ debug: struct {
 
 allocator: mem.Allocator,
 
-aot_buf: []align(8) u8,
+aot_buf: []align(4096) u8,
 
 heap_buf: []u8 align(8),
 
@@ -3424,7 +3424,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
     physics.* = .{
         .allocator = allocator,
 
-        .aot_buf = try allocator.alignedAlloc(u8, .@"8", aot_buf_raw.len), // Change alignment for WAMR
+        .aot_buf = try allocator.alignedAlloc(u8, .fromByteUnits(4096), aot_buf_raw.len), // Change alignment for WAMR
 
         .heap_buf = try allocator.alignedAlloc(u8, .@"8", heap_size),
 

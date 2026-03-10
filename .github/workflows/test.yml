@@ -33,7 +33,7 @@ jobs:
           wamrc --target=x86_64 \
                 --cpu=x86-64-v3 \
                 --opt-level=3 \
-                --size-level=3 \
+                --size-level=1 \
                 --enable-simd \
                 --enable-llvm-pgo \
                 --format=aot \
@@ -41,6 +41,9 @@ jobs:
                 src/Physics/binary/HavokPhysics.wasm
 
           ./iwasm --gen-prof-file=HavokPhysics.profraw -f __wasm_call_ctors src/Physics/binary/x86_64/HavokPhysics.aot
+
+          zig build
+          ./zig-out/bin/havok
 
       - uses: actions/upload-artifact@v6
         with:

@@ -18,6 +18,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake
 
+      - uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "18.1.8"
+          cached: true
+
       - run: |
           WAMR_VERSION="2.4.4"
 
@@ -42,9 +47,10 @@ jobs:
 
           zig build
           ./zig-out/bin/havok
+      
+      - run: llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
       - uses: actions/upload-artifact@v6
         with:
           name: wamr-pgo-results
-          path: |
-            HavokPhysics.profraw
+          path: HavokPhysics.profdata

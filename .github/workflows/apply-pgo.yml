@@ -52,10 +52,10 @@ jobs:
 
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
-          wamrc --target=x86_64 \
+          wamrc --target=x86_64-pc-windows-msvc \
                 --cpu=x86-64-v3 \
                 --opt-level=3 \
-                --size-level=${SIZE_LEVEL} \
+                --size-level=1 \
                 --enable-simd \
                 --use-prof-file=HavokPhysics.profdata \
                 --format=aot \

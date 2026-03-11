@@ -39,7 +39,6 @@ jobs:
           chmod +x ./iwasm
 
           wamrc --target=x86_64 \
-                --target-abi=msvc \
                 --cpu=x86-64-v3 \
                 --opt-level=${OPT_LEVEL} \
                 --size-level=${SIZE_LEVEL} \
@@ -55,7 +54,6 @@ jobs:
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
           wamrc --target=x86_64 \
-                --target-abi=msvc \
                 --cpu=x86-64-v3 \
                 --opt-level=${OPT_LEVEL} \
                 --size-level=${SIZE_LEVEL} \

@@ -2172,7 +2172,7 @@ pub const World = struct {
     }
 
     /// Advanced use only. Perform a raycast using structures preallocated in the WASM memory.
-    /// `world` should be the address of an HP_World, `query` should be the address of a RayCastInput, and
+    /// `world` should be the address of an world, `query` should be the address of a RayCastInput, and
     /// `result` should be the address of a buffer of `max_results` RaycastResult. Returns the number of hits.
     pub fn castRay(self: *const @This(), world: u32, query: u32, result: u32, max_results: i32) i32 {
         return castOpaque(i32, cast_ray_impl(
@@ -2319,7 +2319,7 @@ embind_temp_arena: heap.ArenaAllocator,
 /// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
 embind_temp_allocator: mem.Allocator,
 
-const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");
+const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysicsPGO.aot");
 
 const stack_size: u32 = 64 * 1024;
 

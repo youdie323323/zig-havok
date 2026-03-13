@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = std.builtin;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{
@@ -6,7 +7,7 @@ pub fn build(b: *std.Build) void {
             .abi = .msvc,
         },
     });
-    const optimize = b.standardOptimizeOption(.{});
+    const optimize: builtin.OptimizeMode = .ReleaseFast;
 
     const mod = b.addModule("havok", .{
         .root_source_file = b.path("src/root.zig"),
@@ -26,8 +27,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Enable thin LTO
-    // TODO: not working with linux (maybe with macos too)
-    // exe.lto = .thin;
+    exe.lto = .thin;
 
     {
         const wamr_dep = b.dependency("wamr", .{

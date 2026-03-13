@@ -36,8 +36,6 @@ jobs:
           OPT_LEVEL="3"
           SIZE_LEVEL="1"
 
-          chmod +x ./iwasm
-
           wamrc --target=x86_64 \
                 --target-abi=msvc \
                 --cpu=x86-64-v3 \
@@ -64,6 +62,9 @@ jobs:
                 --format=aot \
                 -o src/Physics/binary/x86_64/HavokPhysicsPGO.aot \
                 src/Physics/binary/HavokPhysics.wasm
+
+          chmod +x ./iwasm
+          ./iwasm src/Physics/binary/x86_64/HavokPhysicsPGO.aot
 
       - uses: actions/upload-artifact@v6
         with:

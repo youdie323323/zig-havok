@@ -26,6 +26,8 @@ jobs:
           cached: false
 
       - run: |
+          # TODO: sync wamrc options with wamr-zig compile flags
+
           OPT_LEVEL="3"
           SIZE_LEVEL="1"
 

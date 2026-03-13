@@ -24,20 +24,10 @@ jobs:
           cached: false
 
       - run: |
-          git clone https://github.com/bytecodealliance/wasm-micro-runtime.git
-
-          cd wasm-micro-runtime/wamr-compiler
-          mkdir build && cd build
-
-          cmake .. -DLLVM_DIR=${{ env.LLVM_PATH }}/lib/cmake/llvm
-
-          make -j$(nproc)
-
-          sudo mv wamrc /usr/local/bin/
-
-      - run: |
           OPT_LEVEL="3"
           SIZE_LEVEL="1"
+
+          chmod +x ./wamrc
 
           wamrc --target=x86_64 \
                 # --target-abi=msvc \

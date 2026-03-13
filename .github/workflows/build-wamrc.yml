@@ -4,16 +4,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  apply-pgo:
+  build-wamrc:
     runs-on: ubuntu-22.04
 
     steps:
       - run: |
           sudo apt-get update
-          sudo apt-get install git build-essential cmake g++-multilib libgcc-9-dev lib32gcc-9-dev ccache 
+          sudo apt-get install git build-essential cmake g++-multilib libgcc-9-dev lib32gcc-9-dev ccache
 
       - run: |
           git clone https://github.com/bytecodealliance/wasm-micro-runtime.git
+          cd wasm-micro-runtime
 
           cd wamr-compiler
           ./build_llvm.sh
@@ -23,5 +24,5 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: apply-pgo-result
-          path: wamr-compiler/build/wamrc
+          name: wamrc
+          path: wasm-micro-runtime/wamr-compiler/build/wamrc

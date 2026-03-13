@@ -36,9 +36,7 @@ jobs:
           OPT_LEVEL="3"
           SIZE_LEVEL="1"
 
-          wamrc --target=x86_64 \
-                --cpu=x86-64-v3 \
-                --opt-level=${OPT_LEVEL} \
+          wamrc --opt-level=${OPT_LEVEL} \
                 --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --enable-llvm-pgo \
@@ -51,9 +49,7 @@ jobs:
 
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
-          wamrc --target=x86_64 \
-                --cpu=x86-64-v3 \
-                --opt-level=${OPT_LEVEL} \
+          wamrc --opt-level=${OPT_LEVEL} \
                 --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --use-prof-file=HavokPhysics.profdata \

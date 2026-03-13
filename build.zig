@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
             .abi = .msvc,
         },
     });
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
+    const optimize = b.standardOptimizeOption(.{});
 
     const mod = b.addModule("havok", .{
         .root_source_file = b.path("src/root.zig"),

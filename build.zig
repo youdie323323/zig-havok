@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = std.builtin;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{
@@ -7,7 +6,7 @@ pub fn build(b: *std.Build) void {
             .abi = .msvc,
         },
     });
-    const optimize: builtin.OptimizeMode = .ReleaseFast;
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
     const mod = b.addModule("havok", .{
         .root_source_file = b.path("src/root.zig"),

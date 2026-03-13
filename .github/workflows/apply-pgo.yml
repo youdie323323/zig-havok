@@ -36,7 +36,10 @@ jobs:
           OPT_LEVEL="3"
           SIZE_LEVEL="1"
 
-          wamrc --opt-level=${OPT_LEVEL} \
+          wamrc --target=x86_64 \
+                # --target-abi=msvc \
+                --cpu=x86-64-v3 \
+                --opt-level=${OPT_LEVEL} \
                 --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --enable-llvm-pgo \
@@ -44,12 +47,15 @@ jobs:
                 -o src/Physics/binary/x86_64/HavokPhysics.aot \
                 src/Physics/binary/HavokPhysics.wasm
 
-          zig build -Doptimize=ReleaseFast
+          zig build
           ./zig-out/bin/havok
 
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
-          wamrc --opt-level=${OPT_LEVEL} \
+          wamrc --target=x86_64 \
+                # --target-abi=msvc \
+                --cpu=x86-64-v3 \
+                --opt-level=${OPT_LEVEL} \
                 --size-level=${SIZE_LEVEL} \
                 --enable-simd \
                 --use-prof-file=HavokPhysics.profdata \

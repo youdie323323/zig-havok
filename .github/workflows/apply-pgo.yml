@@ -9,6 +9,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -30,15 +32,15 @@ jobs:
           chmod +x ./wamrc
 
           ./wamrc --target=x86_64 \
-                # --target-abi=msvc \
-                --cpu=x86-64-v3 \
-                --opt-level=${OPT_LEVEL} \
-                --size-level=${SIZE_LEVEL} \
-                --enable-simd \
-                --enable-llvm-pgo \
-                --format=aot \
-                -o src/Physics/binary/x86_64/HavokPhysics.aot \
-                src/Physics/binary/HavokPhysics.wasm
+                  # --target-abi=msvc \
+                  --cpu=x86-64-v3 \
+                  --opt-level=${OPT_LEVEL} \
+                  --size-level=${SIZE_LEVEL} \
+                  --enable-simd \
+                  --enable-llvm-pgo \
+                  --format=aot \
+                  -o src/Physics/binary/x86_64/HavokPhysics.aot \
+                  src/Physics/binary/HavokPhysics.wasm
 
           zig build
           ./zig-out/bin/havok
@@ -46,15 +48,15 @@ jobs:
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
           ./wamrc --target=x86_64 \
-                # --target-abi=msvc \
-                --cpu=x86-64-v3 \
-                --opt-level=${OPT_LEVEL} \
-                --size-level=${SIZE_LEVEL} \
-                --enable-simd \
-                --use-prof-file=HavokPhysics.profdata \
-                --format=aot \
-                -o src/Physics/binary/x86_64/HavokPhysicsPGO.aot \
-                src/Physics/binary/HavokPhysics.wasm
+                  # --target-abi=msvc \
+                  --cpu=x86-64-v3 \
+                  --opt-level=${OPT_LEVEL} \
+                  --size-level=${SIZE_LEVEL} \
+                  --enable-simd \
+                  --use-prof-file=HavokPhysics.profdata \
+                  --format=aot \
+                  -o src/Physics/binary/x86_64/HavokPhysicsPGO.aot \
+                  src/Physics/binary/HavokPhysics.wasm
 
           chmod +x ./iwasm
           ./iwasm src/Physics/binary/x86_64/HavokPhysicsPGO.aot

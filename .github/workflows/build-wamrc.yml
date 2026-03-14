@@ -10,17 +10,31 @@ jobs:
     steps:
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.14.3' 
+          python-version: "3.14.3"
 
       - run: |
           git clone https://github.com/bytecodealliance/wasm-micro-runtime.git
           cd wasm-micro-runtime
 
           cd wamr-compiler
+
           python -m pip install requests
           python build_llvm.py
+
           mkdir build && cd build
-          cmake ..
+
+          cmake .. \
+            -DWAMR_BUILD_AOT=1 \
+            -DWAMR_BUILD_SIMD=1 \
+            -DWAMR_BUILD_REF_TYPES=1 \
+            -DWAMR_BUILD_BULK_MEMORY=1 \
+            -DWAMR_BUILD_BULK_MEMORY_OPT=1 \
+            -DWAMR_BUILD_CALL_INDIRECT_OVERLONG=1 \
+            -DWAMR_BUILD_STATIC_PGO=1 \
+            -DWAMR_BUILD_LIBC_WASI=1 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWAMR_BUILD_TARGET=X86_64
           cmake --build . --config Release
 
       - uses: actions/upload-artifact@v6

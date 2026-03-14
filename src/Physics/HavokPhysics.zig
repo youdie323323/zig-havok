@@ -2290,8 +2290,6 @@ debug: struct {
 
 allocator: mem.Allocator,
 
-aot_buf: []align(4096) u8,
-
 heap_buf: []u8 align(8),
 
 module: wamr.wasm_module_t = null,
@@ -2321,6 +2319,7 @@ embind_temp_arena: heap.ArenaAllocator,
 embind_temp_allocator: mem.Allocator,
 
 const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");
+const aot_buf align(8) = aot_buf_raw.*; // Change alignment for WAMR
 
 const stack_size: u32 = 64 * 1024;
 
@@ -3412,8 +3411,6 @@ pub fn init(allocator: mem.Allocator) !*Physics {
     physics.* = .{
         .allocator = allocator,
 
-        .aot_buf = try allocator.alignedAlloc(u8, .fromByteUnits(4096), aot_buf_raw.len), // Change alignment for WAMR
-
         .heap_buf = try allocator.alignedAlloc(u8, .@"8", heap_size),
 
         .cached_indirect_functions = .init(allocator),
@@ -3438,9 +3435,6 @@ pub fn init(allocator: mem.Allocator) !*Physics {
         .query_collector = .{ .physics = physics },
         .debug = .{ .physics = physics },
     };
-
-    // Copy buf onto aot_buf
-    @memcpy(physics.aot_buf, aot_buf_raw);
 
     {
         physics.embind_arena = .init(allocator);
@@ -3510,8 +3504,8 @@ pub fn init(allocator: mem.Allocator) !*Physics {
     var error_buf: [128]u8 = undefined;
 
     physics.module = wamr.wasm_runtime_load(
-        physics.aot_buf.ptr,
-        comptime @intCast(aot_buf_raw.len),
+        @constCast(&aot_buf),
+        comptime @intCast(aot_buf.len),
         &error_buf[0],
         comptime @intCast(error_buf.len),
     );
@@ -3575,8 +3569,6 @@ pub fn deinit(self: *Physics) void {
     const allocator = self.allocator;
 
     { // Free buffers
-        allocator.free(self.aot_buf);
-
         allocator.free(self.heap_buf);
     }
 

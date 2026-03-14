@@ -34,8 +34,8 @@ jobs:
           chmod +x ./wamrc
 
           ./wamrc --target=x86_64 \
-                  --opt-level=0 \
-                  --size-level=0 \
+                  --opt-level=${OPT_LEVEL} \
+                  --size-level=${SIZE_LEVEL} \
                   --enable-bulk-memory \
                   --enable-ref-types \
                   --enable-simd \

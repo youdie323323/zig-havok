@@ -26,8 +26,6 @@ jobs:
           cached: false
 
       - run: |
-          # TODO: sync wamrc options with wamr-zig compile flags
-
           OPT_LEVEL="3"
           SIZE_LEVEL="1"
 
@@ -36,8 +34,6 @@ jobs:
           ./wamrc --target=x86_64 \
                   --opt-level=${OPT_LEVEL} \
                   --size-level=${SIZE_LEVEL} \
-                  --enable-bulk-memory \
-                  --enable-ref-types \
                   --enable-simd \
                   --cpu=x86-64-v3 \
                   --enable-llvm-pgo \
@@ -53,8 +49,6 @@ jobs:
           ./wamrc --target=x86_64 \
                   --opt-level=${OPT_LEVEL} \
                   --size-level=${SIZE_LEVEL} \
-                  --enable-bulk-memory \
-                  --enable-ref-types \
                   --enable-simd \
                   --cpu=x86-64-v3 \
                   --use-prof-file=HavokPhysics.profdata \

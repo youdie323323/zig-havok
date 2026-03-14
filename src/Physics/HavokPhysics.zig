@@ -2304,7 +2304,7 @@ cached_functions: [cached_function_indices.kvs.len]wamr.wasm_function_inst_t = @
 cached_indirect_functions: std.AutoHashMap(u32, wamr.wasm_function_inst_t),
 
 embind_arena: heap.ArenaAllocator,
-/// Allocator especially for embind. Its custom implementation is embind_arena.
+/// Allocator especially for embind. Its custom implementation is `embind_arena`.
 embind_allocator: mem.Allocator,
 
 embind_type_registry: Emscripten.Bind.Type.Registry,
@@ -2316,7 +2316,8 @@ embind_awaiting_dependencies: Emscripten.Bind.AwaitingDependencies,
 embind_invoker_contexts: [cached_function_indices.kvs.len]?*Emscripten.Bind.InvokerContext = @splat(null),
 
 embind_temp_arena: heap.ArenaAllocator,
-/// Temp arena allocator for embind. Mainly used in fromWire of type, it must be freed instantly.
+/// Temp arena allocator for embind. Mainly used in `fromWire` of type, it must be freed instantly.
+/// Its custom implementation is `embind_temp_arena`.
 embind_temp_allocator: mem.Allocator,
 
 const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");

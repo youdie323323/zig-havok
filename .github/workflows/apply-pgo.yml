@@ -34,10 +34,12 @@ jobs:
           chmod +x ./wamrc
 
           ./wamrc --target=x86_64 \
-                  --cpu=x86-64-v3 \
-                  --opt-level=${OPT_LEVEL} \
-                  --size-level=${SIZE_LEVEL} \
+                  --opt-level=0 \
+                  --size-level=0 \
+                  --enable-bulk-memory \
+                  --enable-ref-types \
                   --enable-simd \
+                  --cpu=x86-64-v3 \
                   --enable-llvm-pgo \
                   --format=aot \
                   -o src/Physics/binary/x86_64/HavokPhysics.aot \
@@ -49,10 +51,12 @@ jobs:
           ${{ env.LLVM_PATH }}/bin/llvm-profdata merge -output=HavokPhysics.profdata HavokPhysics.profraw
 
           ./wamrc --target=x86_64 \
-                  --cpu=x86-64-v3 \
                   --opt-level=${OPT_LEVEL} \
                   --size-level=${SIZE_LEVEL} \
+                  --enable-bulk-memory \
+                  --enable-ref-types \
                   --enable-simd \
+                  --cpu=x86-64-v3 \
                   --use-prof-file=HavokPhysics.profdata \
                   --format=aot \
                   -o src/Physics/binary/x86_64/HavokPhysicsPGO.aot \

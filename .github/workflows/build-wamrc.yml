@@ -17,6 +17,7 @@ jobs:
           cd wasm-micro-runtime
 
           cd wamr-compiler
+          python -m pip install requests
           python build_llvm.py
           mkdir build && cd build
           cmake ..

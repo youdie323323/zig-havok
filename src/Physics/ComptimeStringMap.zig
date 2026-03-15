@@ -11,7 +11,7 @@ pub fn ComptimeStringMapIgnoreCaseAscii(comptime Value: type) type {
 }
 
 /// String to value mapping for comptime-known key/value pairs.
-/// Branches on the key length, then compares each string.
+/// Branches on the key length, then compares for each string.
 /// `Value` must not be comptime type as to ensure `getRuntime` works properly.
 fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
     return struct {
@@ -25,15 +25,54 @@ fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
 
         pub const KeyValues = []const KeyValue;
 
-        /// KeyValues where grouped with same key length.
+        /// KeyValues which grouped with the same key length.
         const KeyValuesByLength = struct { len: usize, kvs: KeyValues };
 
         kvs: KeyValues,
+        len_kvs: []const KeyValuesByLength,
 
         /// Initializes the map at comptime with a list of key/value pairs.
         /// The "value" in a key/value pair is optional if type V is void.
         pub inline fn initComptime(comptime kvs: KeyValues) @This() {
-            comptime return .{ .kvs = kvs };
+            comptime return .{
+                .kvs = kvs,
+                .len_kvs = blk: { // Create a list of kv sets grouped by different key lengths
+                    @setEvalBranchQuota(10_000 * math.pow(u32, @intCast(kvs.len + 1), 2));
+
+                    var len_kvs_set: []const KeyValuesByLength = &.{};
+
+                    add_length: for (kvs, 0..) |check_kv, i| {
+                        // The key/value pairs with this length will be grouped
+                        const check_kv_key_len = check_kv[0].len;
+
+                        // Skip this key/value pair if it has already been grouped
+                        for (len_kvs_set) |len_kvs|
+                            if (len_kvs.len == check_kv_key_len)
+                                continue :add_length;
+
+                        var added_kvs: KeyValues = &.{};
+
+                        for (kvs[i..]) |add_kv| {
+                            const add_kv_key, _ = add_kv;
+
+                            if (add_kv_key.len == check_kv_key_len) {
+                                // Check for redundant keys
+                                for (added_kvs) |kv|
+                                    if (eql(kv[0], add_kv_key[0..check_kv_key_len]))
+                                        @compileError("redundant key \"" ++ add_kv_key ++ "\"");
+
+                                added_kvs = added_kvs ++ .{add_kv};
+                            }
+                        }
+
+                        const added_len_kvs: KeyValuesByLength = .{ .len = check_kv_key_len, .kvs = added_kvs };
+
+                        len_kvs_set = len_kvs_set ++ .{added_len_kvs};
+                    }
+
+                    break :blk len_kvs_set;
+                },
+            };
         }
 
         /// Returns the list of all the keys in the map.
@@ -92,14 +131,14 @@ fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
 
         /// Runtimely returns the value for the key if any.
         pub fn getRuntime(comptime self: @This(), key: Key) ?Value {
-            @setEvalBranchQuota(200 * math.pow(usize, self.kvs.len, 2));
+            comptime @setEvalBranchQuota(200 * math.pow(u32, @intCast(self.kvs.len), 2));
 
-            inline for (comptime self.groupKVsWithLength()) |len_kvs| {
+            inline for (self.len_kvs) |len_kvs| {
                 const len = len_kvs.len;
                 if (key.len == len)
                     inline for (len_kvs.kvs) |len_kv| {
                         const is_key_eql =
-                            if (@inComptime()) // Use standard `mem.eql` at comptime since we don't care about performance in comptime
+                            if (@inComptime()) // Use standard `mem.eql` at comptime since we don't care about performance issue in comptime
                                 mem.eql(u8, len_kv[0], key)
                             else
                                 eql(len_kv[0], key[0..len]);
@@ -110,46 +149,6 @@ fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
             }
 
             return null;
-        }
-
-        /// Creates a list of kv sets grouped by different key lengths.
-        fn groupKVsWithLength(comptime self: @This()) []const KeyValuesByLength {
-            comptime {
-                @setEvalBranchQuota(10_000 * math.pow(usize, self.kvs.len + 1, 2));
-
-                var len_kvs_set: []const KeyValuesByLength = &.{};
-
-                add_length: for (self.kvs, 0..) |check_kv, i| {
-                    // The key/value pairs with this length will be grouped
-                    const check_kv_key_len = check_kv[0].len;
-
-                    // Skip this key/value pair if it has already been grouped
-                    for (len_kvs_set) |len_kvs|
-                        if (len_kvs.len == check_kv_key_len)
-                            continue :add_length;
-
-                    var added_kvs: KeyValues = &.{};
-
-                    for (self.kvs[i..]) |add_kv| {
-                        const add_kv_key, _ = add_kv;
-
-                        if (add_kv_key.len == check_kv_key_len) {
-                            // Check for redundant keys
-                            for (added_kvs) |kv|
-                                if (eql(kv[0], add_kv_key[0..check_kv_key_len]))
-                                    @compileError("redundant key \"" ++ add_kv_key ++ "\"");
-
-                            added_kvs = added_kvs ++ .{add_kv};
-                        }
-                    }
-
-                    const added_len_kvs: KeyValuesByLength = .{ .len = check_kv_key_len, .kvs = added_kvs };
-
-                    len_kvs_set = len_kvs_set ++ .{added_len_kvs};
-                }
-
-                return len_kvs_set;
-            }
         }
     };
 }

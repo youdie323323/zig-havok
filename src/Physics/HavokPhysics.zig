@@ -3016,7 +3016,7 @@ pub const Event = struct {
     pub fn asTrigger(self: *const @This(), id: u32) TriggerEventResult {
         return castOpaque(TriggerEventResult, as_trigger(
             self.physics,
-            comptime cached_function_indices.getUnoptional("HP_Event_AsCollision"),
+            comptime cached_function_indices.getUnoptional("HP_Event_AsTrigger"),
             &id,
         ));
     }

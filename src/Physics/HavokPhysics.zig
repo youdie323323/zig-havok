@@ -3095,12 +3095,10 @@ pub const Debug = struct {
     /// Stop recording performance counters for a world. Only available in development builds.
     /// This will call a method 'timerData' on the callback object, which can
     /// retrieve statistics formatted in XML, for use with hkMonitor.
-    pub fn stopRecordingStats(self: *const @This(), hit_capacity: i32) Result {
-        return castOpaque(Result, stop_recording_stats_impl(
-            self.physics,
-            comptime cached_function_indices.getUnoptional("HP_Debug_StopRecordingStats"),
-            &hit_capacity,
-        ));
+    pub fn stopRecordingStats(self: *const @This()) Result {
+        // TODO: implement this, this is using emval and hard to implement
+
+        return castOpaque(Result, stop_recording_stats_impl(self.physics, comptime cached_function_indices.getUnoptional("HP_Debug_StopRecordingStats")));
     }
 
     const TypeInstance = Emscripten.Bind.Type.Instance;

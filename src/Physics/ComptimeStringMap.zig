@@ -85,29 +85,38 @@ fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
             }
         }
 
+        /// Returns the value for the key if any.
+        pub fn getUnoptional(comptime self: @This(), comptime key: Key) meta.Child(@TypeOf(self.get(key))) {
+            comptime return self.get(key) orelse @compileError(fmt.comptimePrint("unregistered key: {s}", .{key}));
+        }
+
         /// Runtimely returns the value for the key if any.
         pub fn getRuntime(comptime self: @This(), key: Key) ?Value {
-            @setEvalBranchQuota(200 * self.kvs.len * self.kvs.len);
+            @setEvalBranchQuota(200 * math.pow(usize, self.kvs.len, 2));
 
             inline for (comptime self.groupKVsWithLength()) |len_kvs| {
                 const len = len_kvs.len;
                 if (key.len == len)
-                    inline for (len_kvs.kvs) |len_kv|
-                        if (eql(len_kv[0], key[0..len]))
+                    inline for (len_kvs.kvs) |len_kv| {
+                        const is_key_eql =
+                            if (@inComptime()) // Use standard `mem.eql` at comptime since we don't care about performance in comptime
+                                mem.eql(u8, len_kv[0], key)
+                            else
+                                eql(len_kv[0], key[0..len]);
+
+                        if (is_key_eql)
                             return len_kv[1];
+                    };
             }
 
             return null;
         }
 
-        /// Returns the value for the key if any.
-        pub fn getDefinitely(comptime self: @This(), comptime key: Key) Value {
-            comptime return self.get(key) orelse @compileError("Unregistered key");
-        }
-
         /// Creates a list of kv sets grouped by different key lengths.
         fn groupKVsWithLength(comptime self: @This()) []const KeyValuesByLength {
             comptime {
+                @setEvalBranchQuota(10_000 * math.pow(usize, self.kvs.len + 1, 2));
+
                 var len_kvs_set: []const KeyValuesByLength = &.{};
 
                 add_length: for (self.kvs, 0..) |check_kv, i| {
@@ -257,6 +266,9 @@ const assert = debug.assert;
 const testing = std.testing;
 const simd = std.simd;
 const meta = std.meta;
+const mem = std.mem;
+const fmt = std.fmt;
+const math = std.math;
 
 test staticEql {
     const corpus: []const *const [5]u8 = &.{

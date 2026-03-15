@@ -27,9 +27,9 @@ pub fn build(b: *std.Build) void {
     });
 
     // Enable thin LTO
-    // exe.lto = .thin;
+    exe.lto = .thin;
 
-    {
+    { // Install the wamr dependency
         const wamr_dep = b.dependency("wamr", .{
             .target = target,
             .optimize = optimize,
@@ -41,4 +41,13 @@ pub fn build(b: *std.Build) void {
     }
 
     b.installArtifact(exe);
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = exe.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "Install docs");
+    docs_step.dependOn(&install_docs.step);
 }

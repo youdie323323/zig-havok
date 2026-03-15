@@ -53,8 +53,9 @@ const Emscripten = struct {
                 /// Not only purposive for one kind. General-meant size.
                 size: ?u32 = null,
 
-                true_value: ?u32 = null,
-                false_value: ?u32 = null,
+                // These are definitely and respectively 1 and 0
+                // true_value: ?u32 = null,
+                // false_value: ?u32 = null,
 
                 is_signed: bool = false,
 
@@ -126,7 +127,7 @@ const Emscripten = struct {
 
                     return switch (self.kind) {
                         .void => @ptrFromInt(0),
-                        .bool => @ptrFromInt(@as(usize, if (wire.value != 0) 1 else 0)),
+                        .bool => @ptrFromInt(@as(usize, @intCast(wire.value))),
                         .int => blk: {
                             const value_u32: u32 = @truncate(wire.value);
 
@@ -193,12 +194,7 @@ const Emscripten = struct {
 
                     return switch (self.kind) {
                         .void => .{ .value = 0 },
-                        .bool => .{ .value = @intCast(
-                            if (castOpaqueSimplex(bool, @"opaque"))
-                                self.true_value.?
-                            else
-                                self.false_value.?,
-                        ) },
+                        .bool => .{ .value = @intFromBool(castOpaqueSimplex(bool, @"opaque")) },
                         .int, .float, .@"enum" => .{ .value = castOpaqueSimplex(u32, @"opaque") },
                         .bigint => .{ .value = @bitCast(castOpaqueSimplex(u64, @"opaque")), .is_multiple = true },
                         // .std_string => @panic("std_string features are not implemented"),
@@ -316,155 +312,232 @@ fn replaceMethodImpl(
     function: MethodImpl,
 ) void {
     switch (function_index) {
-        cached_function_indices.getDefinitely("HP_GetStatistics") => get_statistics_impl = function,
+        cached_function_indices.getUnoptional("HP_GetStatistics") => get_statistics_impl = function,
 
         // Begin shape
 
-        cached_function_indices.getDefinitely("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateCapsule") => Shape.create_capsule_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateCylinder") => Shape.create_cylinder_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateBox") => Shape.create_box_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull") => Shape.create_convex_hull_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateMesh") => Shape.create_mesh_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_CreateHeightField") => Shape.create_height_field_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateCapsule") => Shape.create_capsule_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateCylinder") => Shape.create_cylinder_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateBox") => Shape.create_box_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateConvexHull") => Shape.create_convex_hull_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateMesh") => Shape.create_mesh_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateHeightField") => Shape.create_height_field_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo") => Shape.set_filter_info_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo") => Shape.get_filter_info_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_SetFilterInfo") => Shape.set_filter_info_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetFilterInfo") => Shape.get_filter_info_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_SetMaterial") => Shape.set_material_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_GetMaterial") => Shape.get_material_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_SetMaterial") => Shape.set_material_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetMaterial") => Shape.get_material_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_GetDensity") => Shape.get_density_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_SetDensity") => Shape.set_density_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetDensity") => Shape.get_density_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_SetDensity") => Shape.set_density_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateContainer") => Shape.create_container_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_AddChild") => Shape.add_child_impl = function,
-        cached_function_indices.getDefinitely("HP_Shape_RemoveChild") => Shape.remove_child_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_AddChild") => Shape.add_child_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_RemoveChild") => Shape.remove_child_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_GetNumChildren") => Shape.get_num_children_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetNumChildren") => Shape.get_num_children_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_GetChildShape") => Shape.get_child_shape_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetChildShape") => Shape.get_child_shape_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_GetType") => Shape.get_type_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetType") => Shape.get_type_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox") => Shape.get_bounding_box_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_GetBoundingBox") => Shape.get_bounding_box_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_Release") => Shape.release_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_Release") => Shape.release_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties") => Shape.build_mass_properties_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_BuildMassProperties") => Shape.build_mass_properties_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext") => Shape.path_iterator_get_next_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_PathIterator_GetNext") => Shape.path_iterator_get_next_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Shape_SetTrigger") => Shape.set_trigger_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_SetTrigger") => Shape.set_trigger_impl = function,
 
         // End shape
 
         // Begin debug geometry
 
-        cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry") => DebugGeometry.create_impl = function,
+        cached_function_indices.getUnoptional("HP_Shape_CreateDebugDisplayGeometry") => DebugGeometry.create_impl = function,
 
-        cached_function_indices.getDefinitely("HP_DebugGeometry_GetInfo") => DebugGeometry.get_info_impl = function,
+        cached_function_indices.getUnoptional("HP_DebugGeometry_GetInfo") => DebugGeometry.get_info_impl = function,
 
-        cached_function_indices.getDefinitely("HP_DebugGeometry_Release") => DebugGeometry.release_impl = function,
+        cached_function_indices.getUnoptional("HP_DebugGeometry_Release") => DebugGeometry.release_impl = function,
 
         // End debug geometry
 
         // Begin body
 
-        cached_function_indices.getDefinitely("HP_Body_Create") => Body.create_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_Create") => Body.create_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_Release") => Body.release_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_Release") => Body.release_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetShape") => Body.set_shape_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetShape") => Body.get_shape_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetShape") => Body.set_shape_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetShape") => Body.get_shape_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetMotionType") => Body.set_motion_type_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetMotionType") => Body.get_motion_type_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetMotionType") => Body.set_motion_type_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetMotionType") => Body.get_motion_type_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetEventMask") => Body.set_event_mask_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetEventMask") => Body.get_event_mask_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetEventMask") => Body.set_event_mask_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetEventMask") => Body.get_event_mask_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetMassProperties") => Body.set_mass_properties_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetMassProperties") => Body.get_mass_properties_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetMassProperties") => Body.set_mass_properties_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetMassProperties") => Body.get_mass_properties_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetLinearDamping") => Body.set_linear_damping_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetLinearDamping") => Body.get_linear_damping_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetLinearDamping") => Body.set_linear_damping_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetLinearDamping") => Body.get_linear_damping_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetAngularDamping") => Body.set_angular_damping_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetAngularDamping") => Body.get_angular_damping_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetAngularDamping") => Body.set_angular_damping_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetAngularDamping") => Body.get_angular_damping_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetGravityFactor") => Body.set_gravity_factor_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetGravityFactor") => Body.get_gravity_factor_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetGravityFactor") => Body.set_gravity_factor_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetGravityFactor") => Body.get_gravity_factor_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_GetWorldTransformOffset") => Body.get_world_transform_offset_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetWorldTransformOffset") => Body.get_world_transform_offset_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetQTransform") => Body.set_q_transform_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetQTransform") => Body.get_q_transform_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetQTransform") => Body.set_q_transform_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetQTransform") => Body.get_q_transform_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetPosition") => Body.set_position_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetPosition") => Body.get_position_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetPosition") => Body.set_position_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetPosition") => Body.get_position_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetOrientation") => Body.set_orientation_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetOrientation") => Body.get_orientation_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetOrientation") => Body.set_orientation_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetOrientation") => Body.get_orientation_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetLinearVelocity") => Body.set_linear_velocity_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetLinearVelocity") => Body.get_linear_velocity_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetLinearVelocity") => Body.set_linear_velocity_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetLinearVelocity") => Body.get_linear_velocity_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetAngularVelocity") => Body.set_angular_velocity_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetAngularVelocity") => Body.get_angular_velocity_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetAngularVelocity") => Body.set_angular_velocity_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetAngularVelocity") => Body.get_angular_velocity_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetTargetQTransform") => Body.set_target_q_transform_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetTargetQTransform") => Body.set_target_q_transform_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_ApplyImpulse") => Body.apply_impulse_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_ApplyAngularImpulse") => Body.apply_angular_impulse_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_ApplyImpulse") => Body.apply_impulse_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_ApplyAngularImpulse") => Body.apply_angular_impulse_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetActivationState") => Body.set_activation_state_impl = function,
-        cached_function_indices.getDefinitely("HP_Body_GetActivationState") => Body.get_activation_state_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetActivationState") => Body.set_activation_state_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_GetActivationState") => Body.get_activation_state_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetActivationControl") => Body.set_activation_control_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetActivationControl") => Body.set_activation_control_impl = function,
 
-        cached_function_indices.getDefinitely("HP_Body_SetActivationPriority") => Body.set_activation_priority_impl = function,
+        cached_function_indices.getUnoptional("HP_Body_SetActivationPriority") => Body.set_activation_priority_impl = function,
 
         // End body
 
+        // Begin constraint
+
+        cached_function_indices.getUnoptional("HP_Constraint_Create") => Constraint.create_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_Release") => Constraint.release_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetParentBody") => Constraint.set_parent_body_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetParentBody") => Constraint.set_parent_body_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetChildBody") => Constraint.set_child_body_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetChildBody") => Constraint.get_child_body_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetEnabled") => Constraint.set_enabled_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetEnabled") => Constraint.get_enabled_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetCollisionsEnabled") => Constraint.set_collisions_enabled_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetCollisionsEnabled") => Constraint.get_collisions_enabled_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMode") => Constraint.set_axis_mode_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMode") => Constraint.get_axis_mode_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorType") => Constraint.set_axis_motor_type_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorType") => Constraint.get_axis_motor_type_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_GetAppliedImpulses") => Constraint.get_applied_impulses_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetAnchorInParent") => Constraint.set_anchor_in_parent_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAnchorInChild") => Constraint.set_anchor_in_child_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisFriction") => Constraint.get_axis_friction_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMinLimit") => Constraint.get_axis_min_limit_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMaxLimit") => Constraint.get_axis_max_limit_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorTarget") => Constraint.get_axis_motor_target_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorMaxForce") => Constraint.get_axis_motor_max_force_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorPositionTarget") => Constraint.get_axis_motor_position_target_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorVelocityTarget") => Constraint.get_axis_motor_velocity_target_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorStiffness") => Constraint.get_axis_motor_stiffness_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorDamping") => Constraint.get_axis_motor_damping_impl = function,
+
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisFriction") => Constraint.set_axis_friction_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMinLimit") => Constraint.set_axis_min_limit_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMaxLimit") => Constraint.set_axis_max_limit_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisStiffness") => Constraint.set_axis_stiffness = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisDamping") => Constraint.set_axis_damping = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorTarget") => Constraint.set_axis_motor_target_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorMaxForce") => Constraint.set_axis_motor_max_force_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorPositionTarget") => Constraint.set_axis_motor_position_target_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorVelocityTarget") => Constraint.set_axis_motor_velocity_target_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorStiffness") => Constraint.set_axis_motor_stiffness_impl = function,
+        cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorDamping") => Constraint.set_axis_motor_damping_impl = function,
+
+        // End constraint
+
         // Begin world
 
-        cached_function_indices.getDefinitely("HP_World_Create") => World.create_impl = function,
+        cached_function_indices.getUnoptional("HP_World_Create") => World.create_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_Release") => World.release_impl = function,
+        cached_function_indices.getUnoptional("HP_World_Release") => World.release_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_GetBodyBuffer") => World.get_body_buffer_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetBodyBuffer") => World.get_body_buffer_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_SetGravity") => World.set_gravity_impl = function,
+        cached_function_indices.getUnoptional("HP_World_SetGravity") => World.set_gravity_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_AddBody") => World.add_body_impl = function,
-        cached_function_indices.getDefinitely("HP_World_RemoveBody") => World.remove_body_impl = function,
+        cached_function_indices.getUnoptional("HP_World_AddBody") => World.add_body_impl = function,
+        cached_function_indices.getUnoptional("HP_World_RemoveBody") => World.remove_body_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_GetNumBodies") => World.get_num_bodies_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetNumBodies") => World.get_num_bodies_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_CastRay") => World.cast_ray_impl = function,
+        cached_function_indices.getUnoptional("HP_World_CastRay") => World.cast_ray_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_CastRayWithCollector") => World.cast_ray_with_collector_impl = function,
+        cached_function_indices.getUnoptional("HP_World_CastRayWithCollector") => World.cast_ray_with_collector_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_PointProximityWithCollector") => World.point_proximity_with_collector_impl = function,
-        cached_function_indices.getDefinitely("HP_World_ShapeProximityWithCollector") => World.shape_proximity_with_collector_impl = function,
+        cached_function_indices.getUnoptional("HP_World_PointProximityWithCollector") => World.point_proximity_with_collector_impl = function,
+        cached_function_indices.getUnoptional("HP_World_ShapeProximityWithCollector") => World.shape_proximity_with_collector_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_ShapeCastWithCollector") => World.shape_cast_with_collector_impl = function,
+        cached_function_indices.getUnoptional("HP_World_ShapeCastWithCollector") => World.shape_cast_with_collector_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_Step") => World.step_impl = function,
-        cached_function_indices.getDefinitely("HP_World_SetIdealStepTime") => World.set_ideal_step_time_impl = function,
+        cached_function_indices.getUnoptional("HP_World_Step") => World.step_impl = function,
+        cached_function_indices.getUnoptional("HP_World_SetIdealStepTime") => World.set_ideal_step_time_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_SetSpeedLimit") => World.set_speed_limit_impl = function,
-        cached_function_indices.getDefinitely("HP_World_GetSpeedLimit") => World.get_speed_limit_impl = function,
+        cached_function_indices.getUnoptional("HP_World_SetSpeedLimit") => World.set_speed_limit_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetSpeedLimit") => World.get_speed_limit_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_GetCollisionEvents") => World.get_collision_events_impl = function,
-        cached_function_indices.getDefinitely("HP_World_GetNextCollisionEvent") => World.get_next_collision_event_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetCollisionEvents") => World.get_collision_events_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetNextCollisionEvent") => World.get_next_collision_event_impl = function,
 
-        cached_function_indices.getDefinitely("HP_World_GetTriggerEvents") => World.get_trigger_events_impl = function,
-        cached_function_indices.getDefinitely("HP_World_GetNextTriggerEvent") => World.get_next_trigger_event_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetTriggerEvents") => World.get_trigger_events_impl = function,
+        cached_function_indices.getUnoptional("HP_World_GetNextTriggerEvent") => World.get_next_trigger_event_impl = function,
 
         // End world
+
+        // Begin query collector
+
+        cached_function_indices.getUnoptional("HP_QueryCollector_Create") => QueryCollector.create_impl = function,
+
+        cached_function_indices.getUnoptional("HP_QueryCollector_Release") => QueryCollector.release_impl = function,
+
+        cached_function_indices.getUnoptional("HP_QueryCollector_GetNumHits") => QueryCollector.get_num_hits_impl = function,
+
+        cached_function_indices.getUnoptional("HP_QueryCollector_GetCastRayResult") => QueryCollector.get_cast_ray_result_impl = function,
+
+        cached_function_indices.getUnoptional("HP_QueryCollector_GetPointProximityResult") => QueryCollector.get_point_proximity_result_impl = function,
+        cached_function_indices.getUnoptional("HP_QueryCollector_GetShapeProximityResult") => QueryCollector.get_shape_proximity_result_impl = function,
+
+        cached_function_indices.getUnoptional("HP_QueryCollector_GetShapeCastResult") => QueryCollector.get_shape_cast_result_impl = function,
+
+        // End query collector
+
+        // Begin debug
+
+        cached_function_indices.getUnoptional("HP_Debug_StartRecordingStats") => Debug.start_recording_stats_impl = function,
+        cached_function_indices.getUnoptional("HP_Debug_StopRecordingStats") => Debug.stop_recording_stats_impl = function,
+
+        // End debug
 
         else => undefined,
     }
@@ -476,19 +549,26 @@ fn freeDesturctor(physics: *Physics, ptr: u32) callconv(.c) void {
 }
 
 pub const Vector3 = @Vector(3, Float);
-pub const Quaternion = @Vector(4, Float);
-pub const Rotation = @Vector(3, Vector3);
-pub const QTransform = struct { Vector3, Quaternion };
-pub const QSTransform = struct { Vector3, Quaternion, Vector3 };
-pub const Transform = struct { Vector3, Rotation };
-pub const Aabb = struct { Vector3, Vector3 };
 
 pub const Vector3Result = struct { Result, Vector3 };
+pub const Vector3PairResult = struct { Result, Vector3, Vector3 };
+
+pub const Quaternion = @Vector(4, Float);
 pub const QuaternionResult = struct { Result, Quaternion };
+
+pub const Rotation = @Vector(3, Vector3);
 pub const RotationResult = struct { Result, Rotation };
+
+pub const QTransform = struct { Vector3, Quaternion };
 pub const QTransformResult = struct { Result, QTransform };
+
+pub const QSTransform = struct { Vector3, Quaternion, Vector3 };
 pub const QSTransformResult = struct { Result, QSTransform };
+
+pub const Transform = struct { Vector3, Rotation };
 pub const TransformResult = struct { Result, Transform };
+
+pub const Aabb = struct { Vector3, Vector3 };
 pub const AabbResult = struct { Result, Aabb };
 
 fn opacifyVectorElements(
@@ -522,12 +602,32 @@ fn opacifyTupleElements(
     return result;
 }
 
-pub const BodyId = struct { u64 };
 pub const ShapeId = struct { u64 };
-pub const ConstraintId = struct { u64 };
-pub const WorldId = struct { u64 };
-pub const CollectorId = struct { u64 };
+pub const ShapeResult = struct { Result, ShapeId };
+
 pub const DebugGeometryId = struct { u64 };
+pub const DebugGeometryResult = struct { Result, DebugGeometryId };
+
+pub const BodyId = struct { u64 };
+pub const BodyResult = struct { Result, BodyId };
+
+pub const ConstraintId = struct { u64 };
+pub const ConstraintResult = struct { Result, ConstraintId };
+
+pub const WorldId = struct { u64 };
+pub const WorldResult = struct { Result, WorldId };
+
+pub const CollectorId = struct { u64 };
+pub const CollectorResult = struct { Result, CollectorId };
+
+pub const ShapePathIterator = struct {
+    /// Shape id.
+    u64,
+    /// Path data.
+    u64,
+};
+
+pub const ShapePathIterResult = struct { Result, ShapePathIterator, i32 };
 
 pub const Result = enum(u32) {
     ok,
@@ -537,6 +637,13 @@ pub const Result = enum(u32) {
     not_implemented,
 };
 
+pub const ShapeType = enum(u32) {
+    collider,
+    container,
+};
+
+pub const ShapeTypeResult = struct { Result, ShapeType };
+
 pub const MotionType = enum(u32) {
     static,
     kinematic,
@@ -544,6 +651,34 @@ pub const MotionType = enum(u32) {
 };
 
 pub const MotionTypeResult = struct { Result, MotionType };
+
+pub const ConstraintMotorType = enum(u32) {
+    none,
+    velocity,
+    position,
+    spring_force,
+    spring_acceleration,
+};
+
+pub const ConstraintMotorTypeResult = struct { Result, ConstraintMotorType };
+
+pub const ConstraintAxisLimitMode = enum(u32) {
+    free,
+    limited,
+    locked,
+};
+
+pub const ConstraintAxisLimitResult = struct { Result, ConstraintAxisLimitMode };
+
+pub const ConstraintAxis = enum(u32) {
+    linear_x,
+    linear_y,
+    linear_z,
+    angular_x,
+    angular_y,
+    angular_z,
+    linear_distance,
+};
 
 pub const MaterialCombine = enum(u32) {
     geometric_mean,
@@ -603,6 +738,21 @@ pub const FilterInfo = struct {
 
 pub const FilterInfoResult = struct { Result, FilterInfo };
 
+pub const ContactPoint = struct {
+    /// Body id.
+    BodyId,
+    /// Collider id.
+    ShapeId,
+    /// Shape hierarchy.
+    ShapePathIterator,
+    /// Position.
+    Vector3,
+    /// Normal.
+    Vector3,
+    /// Triangle index.
+    i32,
+};
+
 pub const RayCastInput = struct {
     /// Start.
     Vector3,
@@ -616,6 +766,15 @@ pub const RayCastInput = struct {
     BodyId,
 };
 
+pub const RayCastResult = struct {
+    /// Fraction.
+    Float,
+    /// Contact point.
+    ContactPoint,
+};
+
+pub const RayCastResultResult = struct { Result, RayCastResult };
+
 pub const PointProximityInput = struct {
     /// Point position.
     Vector3,
@@ -628,6 +787,15 @@ pub const PointProximityInput = struct {
     /// Optional body id to ignore.
     BodyId,
 };
+
+pub const PointProximityResult = struct {
+    /// Distance.
+    Float,
+    /// Contact point.
+    ContactPoint,
+};
+
+pub const PointProximityResultResult = struct { Result, PointProximityResult };
 
 pub const ShapeProximityInput = struct {
     /// Shape id.
@@ -644,6 +812,17 @@ pub const ShapeProximityInput = struct {
     BodyId,
 };
 
+pub const ShapeProximityResult = struct {
+    /// Distance.
+    Float,
+    /// Contact point on input shape, in input shape space.
+    ContactPoint,
+    /// Contact point on hit shape, in world space.
+    ContactPoint,
+};
+
+pub const ShapeProximityResultResult = struct { Result, ShapeProximityResult };
+
 pub const ShapeCastInput = struct {
     /// Shape id.
     ShapeId,
@@ -658,6 +837,17 @@ pub const ShapeCastInput = struct {
     /// Optional body id to ignore.
     BodyId,
 };
+
+pub const ShapeCastResult = struct {
+    /// Fraction.
+    Float,
+    /// Contact point on input shape, in input shape space.
+    ContactPoint,
+    /// Contact point on hit shape, in world space.
+    ContactPoint,
+};
+
+pub const ShapeCastResultResult = struct { Result, ShapeCastResult };
 
 pub const DebugGeometryInfo = struct {
     /// Address of vertex (float3) buffer in plugin.
@@ -689,11 +879,15 @@ pub const ObjectStatistics = struct {
 
 pub const ObjectStatisticsResult = struct { Result, ObjectStatistics };
 
+pub const BoolResult = struct { Result, bool };
+
 pub const IntResult = struct { Result, i32 };
-pub const Uint32Result = struct { Result, u32 };
+pub const UintResult = struct { Result, u32 };
 
 pub const FloatResult = struct { Result, Float };
 pub const FloatPairResult = struct { Result, Float, Float };
+
+pub const InternalHandleResult = UintResult;
 
 // Begin flats
 
@@ -705,33 +899,13 @@ pub fn getStatistics(self: *Physics) ObjectStatisticsResult {
 
     const castOpaque = TypeInstance.castOpaque;
 
-    return castOpaque(ObjectStatisticsResult, get_statistics_impl(self, comptime @intCast(cached_function_indices.getDefinitely("HP_GetStatistics"))));
+    return castOpaque(ObjectStatisticsResult, get_statistics_impl(self, comptime @intCast(cached_function_indices.getUnoptional("HP_GetStatistics"))));
 }
 
 // End flats
 
-pub const InternalHandleResult = Uint32Result;
-
 pub const Shape = struct {
     physics: *Physics,
-
-    pub const OurResult = struct { Result, ShapeId };
-
-    pub const Type = enum(u32) {
-        collider,
-        container,
-    };
-
-    pub const TypeResult = struct { Result, Type };
-
-    pub const PathIterator = struct {
-        /// Shape id.
-        u64,
-        /// Path data.
-        u64,
-    };
-
-    pub const PathIterResult = struct { Result, PathIterator, i32 };
 
     var create_sphere_impl = &noopImpl;
     var create_capsule_impl = &noopImpl;
@@ -771,29 +945,29 @@ pub const Shape = struct {
     var set_trigger_impl = &noopImpl;
 
     /// Creates geometry representing a sphere.
-    pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) OurResult {
+    pub fn createSphere(self: *const @This(), center: Vector3, radius: Float) ShapeResult {
         const center_opaque_array = opacifyVectorElements(3, Float, &center);
         const center_opaque_vector: []const Opaque = &center_opaque_array;
 
-        return castOpaque(OurResult, create_sphere_impl(
+        return castOpaque(ShapeResult, create_sphere_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateSphere"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateSphere"),
             &center_opaque_vector,
             &radius,
         ));
     }
 
     /// Creates a geometry representing a capsule.
-    pub fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) OurResult {
+    pub fn createCapsule(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) ShapeResult {
         const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
         const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
 
         const point_b_opaque_array = opacifyVectorElements(3, Float, &point_b);
         const point_b_opaque_vector: []const Opaque = &point_b_opaque_array;
 
-        return castOpaque(OurResult, create_capsule_impl(
+        return castOpaque(ShapeResult, create_capsule_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateCapsule"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateCapsule"),
             &point_a_opaque_vector,
             &point_b_opaque_vector,
             &radius,
@@ -801,16 +975,16 @@ pub const Shape = struct {
     }
 
     /// Creates a geometry representing a cylinder.
-    pub fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) OurResult {
+    pub fn createCylinder(self: *const @This(), point_a: Vector3, point_b: Vector3, radius: Float) ShapeResult {
         const point_a_opaque_array = opacifyVectorElements(3, Float, &point_a);
         const point_a_opaque_vector: []const Opaque = &point_a_opaque_array;
 
         const point_b_opaque_array = opacifyVectorElements(3, Float, &point_b);
         const point_b_opaque_vector: []const Opaque = &point_b_opaque_array;
 
-        return castOpaque(OurResult, create_cylinder_impl(
+        return castOpaque(ShapeResult, create_cylinder_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateCylinder"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateCylinder"),
             &point_a_opaque_vector,
             &point_b_opaque_vector,
             &radius,
@@ -826,7 +1000,7 @@ pub const Shape = struct {
         rotation: Quaternion,
         /// Total size of the box.
         extents: Vector3,
-    ) OurResult {
+    ) ShapeResult {
         const center_opaque_array = opacifyVectorElements(3, Float, &center);
         const center_opaque_vector: []const Opaque = &center_opaque_array;
 
@@ -836,9 +1010,9 @@ pub const Shape = struct {
         const extents_opaque_array = opacifyVectorElements(3, Float, &extents);
         const extents_opaque_vector: []const Opaque = &extents_opaque_array;
 
-        return castOpaque(OurResult, create_box_impl(
+        return castOpaque(ShapeResult, create_box_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateBox"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateBox"),
             &center_opaque_vector,
             &rotation_opaque_vector,
             &extents_opaque_vector,
@@ -851,10 +1025,10 @@ pub const Shape = struct {
         /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
         vertices: u32,
         num_vertices: i32,
-    ) OurResult {
-        return castOpaque(OurResult, create_convex_hull_impl(
+    ) ShapeResult {
+        return castOpaque(ShapeResult, create_convex_hull_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateConvexHull"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateConvexHull"),
             &vertices,
             &num_vertices,
         ));
@@ -869,10 +1043,10 @@ pub const Shape = struct {
         /// Should be triples of 32-bit integers which index into `vertices`.
         triangles: u32,
         num_triangles: i32,
-    ) OurResult {
-        return castOpaque(OurResult, create_mesh_impl(
+    ) ShapeResult {
+        return castOpaque(ShapeResult, create_mesh_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateMesh"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateMesh"),
             &vertices,
             &num_vertices,
             &triangles,
@@ -891,13 +1065,13 @@ pub const Shape = struct {
         /// Should be a buffer of floats, of size (num_x_samples * num_z_samples), describing heights at (x, z) of
         /// [(0, 0), (1, 0), ... (num_x_samples - 1, 0), (0, 1), (1, 1) ... (num_x_samples - 1, 1) ... (num_x_samples - 1, num_z_samples - 1)].
         heights: u32,
-    ) OurResult {
+    ) ShapeResult {
         const scale_opaque_array = opacifyVectorElements(3, Float, &scale);
         const scale_opaque_vector: []const Opaque = &scale_opaque_array;
 
-        return castOpaque(OurResult, create_height_field_impl(
+        return castOpaque(ShapeResult, create_height_field_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Shape_CreateHeightField"),
+            comptime cached_function_indices.getUnoptional("HP_Shape_CreateHeightField"),
             &num_x_samples,
             &num_z_samples,
             &scale_opaque_vector,
@@ -906,8 +1080,8 @@ pub const Shape = struct {
     }
 
     /// Creates a "container" shape - this shape does not have any inherent geometry, but it can contain other shapes.
-    pub fn createContainer(self: *const @This()) OurResult {
-        return castOpaque(OurResult, create_container_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Shape_CreateContainer")));
+    pub fn createContainer(self: *const @This()) ShapeResult {
+        return castOpaque(ShapeResult, create_container_impl(self.physics, comptime cached_function_indices.getUnoptional("HP_Shape_CreateContainer")));
     }
 
     /// Release a shape, freeing memory if it is unused.
@@ -917,19 +1091,19 @@ pub const Shape = struct {
 
         return castOpaque(Result, release_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_Release")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_Release")),
             &id_opaque_tuple,
         ));
     }
 
     /// Get the type of the shape.
-    pub fn getType(self: *const @This(), id: ShapeId) TypeResult {
+    pub fn getType(self: *const @This(), id: ShapeId) ShapeTypeResult {
         const id_opaque_array = opacifyTupleElements(ShapeId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(TypeResult, get_type_impl(
+        return castOpaque(ShapeTypeResult, get_type_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetType")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetType")),
             &id_opaque_tuple,
         ));
     }
@@ -958,7 +1132,7 @@ pub const Shape = struct {
 
         return castOpaque(Result, add_child_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_AddChild")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_AddChild")),
             &container_id_opaque_tuple,
             &child_id_opaque_tuple,
             &container_from_child_opaque_tuple,
@@ -972,7 +1146,7 @@ pub const Shape = struct {
 
         return castOpaque(Result, remove_child_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_RemoveChild")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_RemoveChild")),
             &container_id_opaque_tuple,
             &child_index,
         ));
@@ -985,19 +1159,19 @@ pub const Shape = struct {
 
         return castOpaque(IntResult, get_num_children_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetNumChildren")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetNumChildren")),
             &container_id_opaque_tuple,
         ));
     }
 
     /// Returns the shape id of the child shape at index `child_index` in the container.
-    pub fn getChildShape(self: *const @This(), container_id: ShapeId, child_index: u32) OurResult {
+    pub fn getChildShape(self: *const @This(), container_id: ShapeId, child_index: u32) ShapeResult {
         const container_id_opaque_array = opacifyTupleElements(ShapeId, &container_id);
         const container_id_opaque_tuple: []const Opaque = &container_id_opaque_array;
 
-        return castOpaque(OurResult, get_child_shape_impl(
+        return castOpaque(ShapeResult, get_child_shape_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetChildShape")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetChildShape")),
             &container_id_opaque_tuple,
             &child_index,
         ));
@@ -1021,7 +1195,7 @@ pub const Shape = struct {
 
         return castOpaque(Result, set_filter_info_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetFilterInfo")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_SetFilterInfo")),
             &id_opaque_tuple,
             &filter_info_opaque_tuple,
         ));
@@ -1034,7 +1208,7 @@ pub const Shape = struct {
 
         return castOpaque(FilterInfoResult, get_filter_info_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetFilterInfo")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetFilterInfo")),
             &id_opaque_tuple,
         ));
     }
@@ -1049,7 +1223,7 @@ pub const Shape = struct {
 
         return castOpaque(Result, set_material_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetMaterial")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_SetMaterial")),
             &id_opaque_tuple,
             &material_opaque_tuple,
         ));
@@ -1062,7 +1236,7 @@ pub const Shape = struct {
 
         return castOpaque(MaterialResult, get_material_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetMaterial")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetMaterial")),
             &id_opaque_tuple,
         ));
     }
@@ -1074,7 +1248,7 @@ pub const Shape = struct {
 
         return castOpaque(Result, set_density_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetDensity")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_SetDensity")),
             &id_opaque_tuple,
             &density,
         ));
@@ -1087,7 +1261,7 @@ pub const Shape = struct {
 
         return castOpaque(FloatResult, get_density_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetDensity")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetDensity")),
             &id_opaque_tuple,
         ));
     }
@@ -1110,7 +1284,7 @@ pub const Shape = struct {
 
         return castOpaque(AabbResult, get_bounding_box_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_GetBoundingBox")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_GetBoundingBox")),
             &id_opaque_tuple,
             &world_from_shape_opaque_tuple,
         ));
@@ -1127,19 +1301,19 @@ pub const Shape = struct {
 
         return castOpaque(MassPropertiesResult, build_mass_properties_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_BuildMassProperties")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_BuildMassProperties")),
             &id_opaque_tuple,
         ));
     }
 
     /// Allows descending a hierarchy of shape containers, advancing `current_item` to the next entry.
-    pub fn pathIteratorGetNext(self: *const @This(), current_item: PathIterator) PathIterResult {
-        const current_item_opaque_array = opacifyTupleElements(PathIterator, &current_item);
+    pub fn pathIteratorGetNext(self: *const @This(), current_item: ShapePathIterator) ShapePathIterResult {
+        const current_item_opaque_array = opacifyTupleElements(ShapePathIterator, &current_item);
         const current_item_opaque_tuple: []const Opaque = &current_item_opaque_array;
 
-        return castOpaque(PathIterResult, path_iterator_get_next_impl(
+        return castOpaque(ShapePathIterResult, path_iterator_get_next_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_PathIterator_GetNext")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_PathIterator_GetNext")),
             &current_item_opaque_tuple,
         ));
     }
@@ -1156,7 +1330,7 @@ pub const Shape = struct {
 
         return castOpaque(Result, set_trigger_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_SetTrigger")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_SetTrigger")),
             &id_opaque_tuple,
             &is_trigger,
         ));
@@ -1172,8 +1346,6 @@ pub const Shape = struct {
 
 pub const Body = struct {
     physics: *Physics,
-
-    pub const OurResult = struct { Result, BodyId };
 
     var create_impl = &noopImpl;
 
@@ -1230,8 +1402,8 @@ pub const Body = struct {
     var set_activation_priority_impl = &noopImpl;
 
     /// Allocates a new body.
-    pub fn create(self: *const @This()) OurResult {
-        return castOpaque(OurResult, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_Body_Create")));
+    pub fn create(self: *const @This()) BodyResult {
+        return castOpaque(BodyResult, create_impl(self.physics, comptime cached_function_indices.getUnoptional("HP_Body_Create")));
     }
 
     /// Releases a body, potentially freeing the memory. Will not remove from the world if body is in use.
@@ -1241,7 +1413,7 @@ pub const Body = struct {
 
         return castOpaque(Result, release_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_Release"),
+            comptime cached_function_indices.getUnoptional("HP_Body_Release"),
             &id_opaque_tuple,
         ));
     }
@@ -1257,7 +1429,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_shape_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetShape"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetShape"),
             &id_opaque_tuple,
             &shape_id_opaque_tuple,
         ));
@@ -1270,7 +1442,7 @@ pub const Body = struct {
 
         return castOpaque(Shape.OurResult, get_shape_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetShape"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetShape"),
             &id_opaque_tuple,
         ));
     }
@@ -1282,7 +1454,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_motion_type_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetMotionType"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetMotionType"),
             &id_opaque_tuple,
             &motion_type,
         ));
@@ -1295,7 +1467,7 @@ pub const Body = struct {
 
         return castOpaque(MotionTypeResult, get_motion_type_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetMotionType"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetMotionType"),
             &id_opaque_tuple,
         ));
     }
@@ -1308,20 +1480,20 @@ pub const Body = struct {
 
         return castOpaque(Result, set_event_mask_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetEventMask"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetEventMask"),
             &id_opaque_tuple,
             &event_mask,
         ));
     }
 
     /// Get the event mask of a body.
-    pub fn getEventMask(self: *const @This(), id: BodyId) Uint32Result {
+    pub fn getEventMask(self: *const @This(), id: BodyId) UintResult {
         const id_opaque_array = opacifyTupleElements(BodyId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
 
-        return castOpaque(Uint32Result, get_event_mask_impl(
+        return castOpaque(UintResult, get_event_mask_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetEventMask"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetEventMask"),
             &id_opaque_tuple,
         ));
     }
@@ -1348,7 +1520,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_mass_properties_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetMassProperties"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetMassProperties"),
             &id_opaque_tuple,
             &mass_properties_opaque_tuple,
         ));
@@ -1361,7 +1533,7 @@ pub const Body = struct {
 
         return castOpaque(MassPropertiesResult, get_mass_properties_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetMassProperties"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetMassProperties"),
             &id_opaque_tuple,
         ));
     }
@@ -1375,7 +1547,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_linear_damping_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetLinearDamping"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetLinearDamping"),
             &id_opaque_tuple,
             &damping,
         ));
@@ -1388,7 +1560,7 @@ pub const Body = struct {
 
         return castOpaque(FloatResult, get_linear_damping_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetLinearDamping"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetLinearDamping"),
             &id_opaque_tuple,
         ));
     }
@@ -1402,7 +1574,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_angular_damping_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetAngularDamping"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetAngularDamping"),
             &id_opaque_tuple,
             &damping,
         ));
@@ -1415,7 +1587,7 @@ pub const Body = struct {
 
         return castOpaque(FloatResult, get_angular_damping_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetAngularDamping"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetAngularDamping"),
             &id_opaque_tuple,
         ));
     }
@@ -1427,7 +1599,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_gravity_factor_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetGravityFactor"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetGravityFactor"),
             &id_opaque_tuple,
             &factor,
         ));
@@ -1440,7 +1612,7 @@ pub const Body = struct {
 
         return castOpaque(FloatResult, get_gravity_factor_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetGravityFactor"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetGravityFactor"),
             &id_opaque_tuple,
         ));
     }
@@ -1457,7 +1629,7 @@ pub const Body = struct {
 
         return castOpaque(InternalHandleResult, get_world_transform_offset_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetWorldTransformOffset"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetWorldTransformOffset"),
             &id_opaque_tuple,
         ));
     }
@@ -1480,7 +1652,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_q_transform_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetQTransform"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetQTransform"),
             &id_opaque_tuple,
             &transform_opaque_tuple,
         ));
@@ -1493,7 +1665,7 @@ pub const Body = struct {
 
         return castOpaque(QTransformResult, get_q_transform_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetQTransform"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetQTransform"),
             &id_opaque_tuple,
         ));
     }
@@ -1509,7 +1681,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_position_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetPosition"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetPosition"),
             &id_opaque_tuple,
             &position_opaque_vector,
         ));
@@ -1523,7 +1695,7 @@ pub const Body = struct {
 
         return castOpaque(Vector3Result, get_position_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetPosition"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetPosition"),
             &id_opaque_tuple,
         ));
     }
@@ -1539,7 +1711,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_orientation_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetOrientation"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetOrientation"),
             &id_opaque_tuple,
             &orientation_opaque_vector,
         ));
@@ -1553,12 +1725,12 @@ pub const Body = struct {
 
         return castOpaque(QuaternionResult, get_orientation_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetOrientation"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetOrientation"),
             &id_opaque_tuple,
         ));
     }
 
-    /// Set the linear velocity of a body. No effect on static bodies.
+    /// Set the linear velocity of a body. No effect on `static` bodies.
     pub fn setLinearVelocity(self: *const @This(), id: BodyId, velocity: Vector3) Result {
         const id_opaque_array = opacifyTupleElements(BodyId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
@@ -1568,7 +1740,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_linear_velocity_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetLinearVelocity"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetLinearVelocity"),
             &id_opaque_tuple,
             &velocity_opaque_vector,
         ));
@@ -1581,12 +1753,12 @@ pub const Body = struct {
 
         return castOpaque(Vector3Result, get_linear_velocity_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetLinearVelocity"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetLinearVelocity"),
             &id_opaque_tuple,
         ));
     }
 
-    /// Set the angular velocity of a body. No effect on static bodies.
+    /// Set the angular velocity of a body. No effect on `static` bodies.
     pub fn setAngularVelocity(self: *const @This(), id: BodyId, velocity: Vector3) Result {
         const id_opaque_array = opacifyTupleElements(BodyId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
@@ -1596,7 +1768,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_angular_velocity_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetAngularVelocity"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetAngularVelocity"),
             &id_opaque_tuple,
             &velocity_opaque_vector,
         ));
@@ -1609,7 +1781,7 @@ pub const Body = struct {
 
         return castOpaque(Vector3Result, get_angular_velocity_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetAngularVelocity"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetAngularVelocity"),
             &id_opaque_tuple,
         ));
     }
@@ -1633,7 +1805,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_target_q_transform_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetTargetQTransform"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetTargetQTransform"),
             &id_opaque_tuple,
             &transform_opaque_tuple,
         ));
@@ -1652,7 +1824,7 @@ pub const Body = struct {
 
         return castOpaque(Result, apply_impulse_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_ApplyImpulse"),
+            comptime cached_function_indices.getUnoptional("HP_Body_ApplyImpulse"),
             &id_opaque_tuple,
             &location_opaque_vector,
             &impulse_opaque_vector,
@@ -1669,7 +1841,7 @@ pub const Body = struct {
 
         return castOpaque(Result, apply_angular_impulse_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_ApplyAngularImpulse"),
+            comptime cached_function_indices.getUnoptional("HP_Body_ApplyAngularImpulse"),
             &id_opaque_tuple,
             &impulse_opaque_vector,
         ));
@@ -1682,7 +1854,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_activation_state_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetActivationState"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetActivationState"),
             &id_opaque_tuple,
             &state,
         ));
@@ -1695,7 +1867,7 @@ pub const Body = struct {
 
         return castOpaque(ActivationStateResult, get_activation_state_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_GetActivationState"),
+            comptime cached_function_indices.getUnoptional("HP_Body_GetActivationState"),
             &id_opaque_tuple,
         ));
     }
@@ -1707,7 +1879,7 @@ pub const Body = struct {
 
         return castOpaque(Result, set_activation_control_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetActivationControl"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetActivationControl"),
             &id_opaque_tuple,
             &control,
         ));
@@ -1722,9 +1894,609 @@ pub const Body = struct {
 
         return castOpaque(Result, set_activation_priority_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_Body_SetActivationPriority"),
+            comptime cached_function_indices.getUnoptional("HP_Body_SetActivationPriority"),
             &id_opaque_tuple,
             &priority,
+        ));
+    }
+
+    const TypeInstance = Emscripten.Bind.Type.Instance;
+
+    const Opaque = TypeInstance.Opaque;
+
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
+};
+
+pub const Constraint = struct {
+    physics: *Physics,
+
+    var create_impl = &noopImpl;
+
+    var release_impl = &noopImpl;
+
+    var set_parent_body_impl = &noopImpl;
+    var get_parent_body_impl = &noopImpl;
+
+    var set_child_body_impl = &noopImpl;
+    var get_child_body_impl = &noopImpl;
+
+    var set_enabled_impl = &noopImpl;
+    var get_enabled_impl = &noopImpl;
+
+    var set_collisions_enabled_impl = &noopImpl;
+    var get_collisions_enabled_impl = &noopImpl;
+
+    var set_axis_mode_impl = &noopImpl;
+    var get_axis_mode_impl = &noopImpl;
+
+    var set_axis_motor_type_impl = &noopImpl;
+    var get_axis_motor_type_impl = &noopImpl;
+
+    var get_applied_impulses_impl = &noopImpl;
+
+    var set_anchor_in_parent_impl = &noopImpl;
+    var set_anchor_in_child_impl = &noopImpl;
+
+    var get_axis_friction_impl = &noopImpl;
+    var get_axis_min_limit_impl = &noopImpl;
+    var get_axis_max_limit_impl = &noopImpl;
+    var get_axis_motor_target_impl = &noopImpl;
+    var get_axis_motor_max_force_impl = &noopImpl;
+    var get_axis_motor_position_target_impl = &noopImpl;
+    var get_axis_motor_velocity_target_impl = &noopImpl;
+    var get_axis_motor_stiffness_impl = &noopImpl;
+    var get_axis_motor_damping_impl = &noopImpl;
+
+    var set_axis_friction_impl = &noopImpl;
+    var set_axis_min_limit_impl = &noopImpl;
+    var set_axis_max_limit_impl = &noopImpl;
+    var set_axis_stiffness = &noopImpl;
+    var set_axis_damping = &noopImpl;
+    var set_axis_motor_target_impl = &noopImpl;
+    var set_axis_motor_max_force_impl = &noopImpl;
+    var set_axis_motor_position_target_impl = &noopImpl;
+    var set_axis_motor_velocity_target_impl = &noopImpl;
+    var set_axis_motor_stiffness_impl = &noopImpl;
+    var set_axis_motor_damping_impl = &noopImpl;
+
+    /// Allocates a new handle for a constraint object, which limits the relative movement between two bodies.
+    pub fn create(self: *const @This()) ConstraintResult {
+        return castOpaque(ConstraintResult, create_impl(self.physics, comptime cached_function_indices.getUnoptional("HP_Constraint_Create")));
+    }
+
+    /// Release the constraint handle, freeing it's memory if not in use.
+    pub fn release(self: *const @This(), id: ConstraintId) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, release_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_Release"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the `parent` body of the constraint. Limits are defined with respect to this body.
+    pub fn setParentBody(self: *const @This(), id: ConstraintId, body_id: BodyId) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const body_id_opaque_array = opacifyTupleElements(BodyId, &body_id);
+        const body_id_opaque_tuple: []const Opaque = &body_id_opaque_array;
+
+        return castOpaque(Result, set_parent_body_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetParentBody"),
+            &id_opaque_tuple,
+            &body_id_opaque_tuple,
+        ));
+    }
+
+    /// Get the parent body for a particular constraint.
+    pub fn getParentBody(self: *const @This(), id: ConstraintId) BodyResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(BodyResult, get_parent_body_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetParentBody"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the "child" body of the constraint. This is the other body which the constraint is attached to.
+    pub fn setChildBody(self: *const @This(), id: ConstraintId, body_id: BodyId) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const body_id_opaque_array = opacifyTupleElements(BodyId, &body_id);
+        const body_id_opaque_tuple: []const Opaque = &body_id_opaque_array;
+
+        return castOpaque(Result, set_child_body_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetChildBody"),
+            &id_opaque_tuple,
+            &body_id_opaque_tuple,
+        ));
+    }
+
+    /// Get the child body for a particular constraint.
+    pub fn getChildBody(self: *const @This(), id: ConstraintId) BodyResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(BodyResult, get_child_body_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetChildBody"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Enables a constraint if isEnabled is non-zero. Requires both bodies to be in the same world to have an effect.
+    pub fn setEnabled(self: *const @This(), id: ConstraintId, is_enabled: bool) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_enabled_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetEnabled"),
+            &id_opaque_tuple,
+            &is_enabled,
+        ));
+    }
+
+    /// Whether the constraint is enabled or not.
+    pub fn getEnabled(self: *const @This(), id: ConstraintId) BoolResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(BoolResult, get_enabled_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetEnabled"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// By default, a constraint will not allow collisions to occur between the two connected bodies.
+    /// A non-zero value for `is_enabled` will change that behaviour.
+    pub fn setCollisionsEnabled(self: *const @This(), id: ConstraintId, is_enabled: bool) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_collisions_enabled_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetCollisionsEnabled"),
+            &id_opaque_tuple,
+            &is_enabled,
+        ));
+    }
+
+    /// Retrieve whether collisions are enabled for an individual constraint.
+    pub fn getCollisionsEnabled(self: *const @This(), id: ConstraintId) BoolResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(BoolResult, get_collisions_enabled_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetCollisionsEnabled"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Set the limit behaviour of the specified axis. See ConstraintAxisLimitMode for each effect.
+    pub fn setAxisMode(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, limit_mode: ConstraintAxisLimitMode) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_mode_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMode"),
+            &id_opaque_tuple,
+            &axis,
+            &limit_mode,
+        ));
+    }
+
+    /// Get the limit behaviour for the specified axis.
+    pub fn getAxisMode(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) ConstraintAxisLimitResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintAxisLimitResult, get_axis_mode_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMode"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Set the motor type for a constraint axis. Controls how the motor applies forces along the axis.
+    pub fn setAxisMotorType(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, motor_type: ConstraintMotorType) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_type_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorType"),
+            &id_opaque_tuple,
+            &axis,
+            &motor_type,
+        ));
+    }
+
+    /// Get the type of motor used on the specified axis.
+    pub fn getAxisMotorType(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) ConstraintMotorTypeResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_type_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorType"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the linear and angular impulses applied by a constraint, in world space.
+    pub fn getAppliedImpulses(self: *const @This(), id: ConstraintId) Vector3PairResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Vector3PairResult, get_applied_impulses_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAppliedImpulses"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Configure the constraint space of the parent body (in parent body space).
+    /// A third basis vector is calculated perpendicular to axis_x/axis_y.
+    /// You must also configure the anchor in child space.
+    pub fn setAnchorInParent(
+        self: *const @This(),
+        id: ConstraintId,
+        /// Origin of constraint space (in parent body space).
+        pivot: Vector3,
+        /// Basis vector for constraint space X (in parent body space).
+        axis_x: Vector3,
+        /// Basis vector for constraint space Y (in parent body space).
+        axis_y: Vector3,
+    ) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const pivot_opaque_array = opacifyVectorElements(3, Float, &pivot);
+        const pivot_opaque_vector: []const Opaque = &pivot_opaque_array;
+
+        const axis_x_opaque_array = opacifyVectorElements(3, Float, &axis_x);
+        const axis_x_opaque_vector: []const Opaque = &axis_x_opaque_array;
+
+        const axis_y_opaque_array = opacifyVectorElements(3, Float, &axis_y);
+        const axis_y_opaque_vector: []const Opaque = &axis_y_opaque_array;
+
+        return castOpaque(Result, set_anchor_in_parent_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAnchorInParent"),
+            &id_opaque_tuple,
+            &pivot_opaque_vector,
+            &axis_x_opaque_vector,
+            &axis_y_opaque_vector,
+        ));
+    }
+
+    /// Configure the constraint space of the child body (in parent body space).
+    /// A third basis vector is calculated perpendicular to axis_x/axis_y.
+    /// You must also configure the anchor in parent space.
+    pub fn setAnchorInChild(
+        self: *const @This(),
+        id: ConstraintId,
+        /// Origin of constraint space (in child body space).
+        pivot: Vector3,
+        /// Basis vector for constraint space X (in child body space).
+        axis_x: Vector3,
+        /// Basis vector for constraint space Y (in child body space).
+        axis_y: Vector3,
+    ) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        const pivot_opaque_array = opacifyVectorElements(3, Float, &pivot);
+        const pivot_opaque_vector: []const Opaque = &pivot_opaque_array;
+
+        const axis_x_opaque_array = opacifyVectorElements(3, Float, &axis_x);
+        const axis_x_opaque_vector: []const Opaque = &axis_x_opaque_array;
+
+        const axis_y_opaque_array = opacifyVectorElements(3, Float, &axis_y);
+        const axis_y_opaque_vector: []const Opaque = &axis_y_opaque_array;
+
+        return castOpaque(Result, set_anchor_in_child_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAnchorInChild"),
+            &id_opaque_tuple,
+            &pivot_opaque_vector,
+            &axis_x_opaque_vector,
+            &axis_y_opaque_vector,
+        ));
+    }
+
+    /// Get the friction coefficient associated with a particular axis for a constraint.
+    pub fn getAxisFriction(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_friction_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisFriction"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Retrieve the minumum signed movement along the specified axis.
+    pub fn getAxisMinLimit(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_min_limit_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMinLimit"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Retrieve the maximum signed movement along the specified axis.
+    pub fn getAxisMaxLimit(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_max_limit_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMaxLimit"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the target for the constraint motor on the specified axis.
+    /// Consider using the more explicit position/velocity target functions.
+    pub fn getAxisMotorTarget(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_target_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorTarget"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the max force (or torque) for a constraint motor on a particular axis.
+    pub fn getAxisMotorMaxForce(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_max_force_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorMaxForce"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the position target for a constraint motor on a particular axis.
+    pub fn getAxisMotorPositionTarget(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_position_target_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorPositionTarget"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the velocity target for a constraint motor on a particular axis.
+    pub fn getAxisMotorVelocityTarget(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_velocity_target_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorVelocityTarget"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the position target stiffness of a `spring` type motor.
+    pub fn getAxisMotorStiffness(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_stiffness_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorStiffness"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Get the velocity target damping of a `spring` type motor.
+    pub fn getAxisMotorDamping(self: *const @This(), id: ConstraintId, axis: ConstraintAxis) FloatResult {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ConstraintMotorTypeResult, get_axis_motor_damping_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_GetAxisMotorDamping"),
+            &id_opaque_tuple,
+            &axis,
+        ));
+    }
+
+    /// Adds a friction coefficient which resists movement along the specified axis.
+    pub fn setAxisFriction(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, friction: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_friction_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisFriction"),
+            &id_opaque_tuple,
+            &axis,
+            &friction,
+        ));
+    }
+
+    /// Set the minimum allowed signed movement along the specified axis.
+    /// For `linear_*` axes, this value is in meters; for angular axes, this is in radians.
+    /// Only has an effect when ConstraintAxisLimitMode is `limited`.
+    pub fn setAxisMinLimit(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, min_limit: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_min_limit_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMinLimit"),
+            &id_opaque_tuple,
+            &axis,
+            &min_limit,
+        ));
+    }
+
+    /// Set the maximum allowed signed movement along the specified axis.
+    /// For `linear_*` axes, this value is in meters; for angular axes, this is in radians.
+    /// Only has an effect when ConstraintAxisLimitMode is `limited`.
+    pub fn setAxisMaxLimit(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, max_limit: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_max_limit_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMaxLimit"),
+            &id_opaque_tuple,
+            &axis,
+            &max_limit,
+        ));
+    }
+
+    /// Sets the stiffness of a constraint axis. This will convert the axis from a hard limit to one which
+    /// uses a `spring` model, parameterized on stiffness and damping.
+    pub fn setAxisStiffness(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, stiffness: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_stiffness(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisStiffness"),
+            &id_opaque_tuple,
+            &axis,
+            &stiffness,
+        ));
+    }
+
+    /// Sets the damping of a constraint axis. This will convert the axis from a hard limit to one which
+    /// uses a `spring` model, parameterized on stiffness and damping.
+    pub fn setAxisDamping(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, damping: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_damping(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisDamping"),
+            &id_opaque_tuple,
+            &axis,
+            &damping,
+        ));
+    }
+
+    /// Set the target for the constraint motor on the specified axis. The precise meaning of target depends on the type of the constraint motor.
+    /// Consider using the more explicit position/velocity target functions.
+    pub fn setAxisMotorTarget(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, target: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_target_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorTarget"),
+            &id_opaque_tuple,
+            &axis,
+            &target,
+        ));
+    }
+
+    /// Set the max force for the constraint motor on the specified axis.
+    /// For angular axes, `max_force` is used as a max torque.
+    pub fn setAxisMotorMaxForce(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, max_force: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_max_force_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorMaxForce"),
+            &id_opaque_tuple,
+            &axis,
+            &max_force,
+        ));
+    }
+
+    /// Set the position target for a constraint motor on a particular axis.
+    pub fn setAxisMotorPositionTarget(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, target: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_position_target_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorPositionTarget"),
+            &id_opaque_tuple,
+            &axis,
+            &target,
+        ));
+    }
+
+    /// Set the velocity target for a constraint motor on a particular axis.
+    pub fn setAxisMotorVelocityTarget(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, target: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_velocity_target_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorVelocityTarget"),
+            &id_opaque_tuple,
+            &axis,
+            &target,
+        ));
+    }
+
+    /// Set the position target stiffness of a `spring` type motor.
+    pub fn setAxisMotorStiffness(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, stiffness: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_stiffness_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorStiffness"),
+            &id_opaque_tuple,
+            &axis,
+            &stiffness,
+        ));
+    }
+
+    /// Set the velocity target damping of a `spring` type motor.
+    pub fn setAxisMotorDamping(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, stiffness: Float) Result {
+        const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, set_axis_motor_damping_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Constraint_SetAxisMotorDamping"),
+            &id_opaque_tuple,
+            &axis,
+            &stiffness,
         ));
     }
 
@@ -1739,8 +2511,6 @@ pub const Body = struct {
 pub const DebugGeometry = struct {
     physics: *Physics,
 
-    pub const OurResult = struct { Result, DebugGeometryId };
-
     var create_impl = &noopImpl;
 
     var get_info_impl = &noopImpl;
@@ -1748,13 +2518,13 @@ pub const DebugGeometry = struct {
     var release_impl = &noopImpl;
 
     /// Generates a visualization of a shape's geometry, suitable for debugging.
-    pub fn create(self: *const @This(), shape_id: ShapeId) OurResult {
+    pub fn create(self: *const @This(), shape_id: ShapeId) DebugGeometryResult {
         const shape_id_opaque_array = opacifyTupleElements(ShapeId, &shape_id);
         const shape_id_opaque_tuple: []const Opaque = &shape_id_opaque_array;
 
-        return castOpaque(OurResult, create_impl(
+        return castOpaque(DebugGeometryResult, create_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_Shape_CreateDebugDisplayGeometry")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_Shape_CreateDebugDisplayGeometry")),
             &shape_id_opaque_tuple,
         ));
     }
@@ -1766,7 +2536,7 @@ pub const DebugGeometry = struct {
 
         return castOpaque(DebugGeometryInfoResult, get_info_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_DebugGeometry_GetInfo")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_DebugGeometry_GetInfo")),
             &id_opaque_tuple,
         ));
     }
@@ -1778,7 +2548,7 @@ pub const DebugGeometry = struct {
 
         return castOpaque(Result, release_impl(
             self.physics,
-            comptime @intCast(cached_function_indices.getDefinitely("HP_DebugGeometry_Release")),
+            comptime @intCast(cached_function_indices.getUnoptional("HP_DebugGeometry_Release")),
             &id_opaque_tuple,
         ));
     }
@@ -1793,8 +2563,6 @@ pub const DebugGeometry = struct {
 
 pub const World = struct {
     physics: *Physics,
-
-    pub const OurResult = struct { Result, WorldId };
 
     var create_impl = &noopImpl;
 
@@ -1831,8 +2599,8 @@ pub const World = struct {
     var get_next_trigger_event_impl = &noopImpl;
 
     /// Allocate a new handle for a world, which is the basis of a simulation.
-    pub fn create(self: *const @This()) OurResult {
-        return castOpaque(OurResult, create_impl(self.physics, comptime cached_function_indices.getDefinitely("HP_World_Create")));
+    pub fn create(self: *const @This()) WorldResult {
+        return castOpaque(WorldResult, create_impl(self.physics, comptime cached_function_indices.getUnoptional("HP_World_Create")));
     }
 
     /// Releases a world handle, freeing any memory used.
@@ -1842,7 +2610,7 @@ pub const World = struct {
 
         return castOpaque(Result, release_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_Release"),
+            comptime cached_function_indices.getUnoptional("HP_World_Release"),
             &id_opaque_tuple,
         ));
     }
@@ -1856,7 +2624,7 @@ pub const World = struct {
 
         return castOpaque(InternalHandleResult, get_body_buffer_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetBodyBuffer"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetBodyBuffer"),
             &id_opaque_tuple,
         ));
     }
@@ -1871,7 +2639,7 @@ pub const World = struct {
 
         return castOpaque(Result, set_gravity_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_SetGravity"),
+            comptime cached_function_indices.getUnoptional("HP_World_SetGravity"),
             &id_opaque_tuple,
             &gravity_opaque_vector,
         ));
@@ -1891,7 +2659,7 @@ pub const World = struct {
 
         return castOpaque(Result, add_body_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_AddBody"),
+            comptime cached_function_indices.getUnoptional("HP_World_AddBody"),
             &id_opaque_tuple,
             &body_id_opaque_tuple,
             &start_asleep,
@@ -1908,7 +2676,7 @@ pub const World = struct {
 
         return castOpaque(Result, remove_body_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_RemoveBody"),
+            comptime cached_function_indices.getUnoptional("HP_World_RemoveBody"),
             &id_opaque_tuple,
             &body_id_opaque_tuple,
         ));
@@ -1921,7 +2689,7 @@ pub const World = struct {
 
         return castOpaque(IntResult, get_num_bodies_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetNumBodies"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetNumBodies"),
             &id_opaque_tuple,
         ));
     }
@@ -1955,7 +2723,7 @@ pub const World = struct {
 
         return castOpaque(Result, cast_ray_with_collector_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_CastRayWithCollector"),
+            comptime cached_function_indices.getUnoptional("HP_World_CastRayWithCollector"),
             &id_opaque_tuple,
             &collector_id_opaque_tuple,
             &query_opaque_tuple,
@@ -1989,7 +2757,7 @@ pub const World = struct {
 
         return castOpaque(Result, point_proximity_with_collector_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_PointProximityWithCollector"),
+            comptime cached_function_indices.getUnoptional("HP_World_PointProximityWithCollector"),
             &id_opaque_tuple,
             &collector_id_opaque_tuple,
             &query_opaque_tuple,
@@ -2026,7 +2794,7 @@ pub const World = struct {
 
         return castOpaque(Result, shape_proximity_with_collector_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_ShapeProximityWithCollector"),
+            comptime cached_function_indices.getUnoptional("HP_World_ShapeProximityWithCollector"),
             &id_opaque_tuple,
             &collector_id_opaque_tuple,
             &query_opaque_tuple,
@@ -2065,7 +2833,7 @@ pub const World = struct {
 
         return castOpaque(Result, shape_cast_with_collector_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_ShapeCastWithCollector"),
+            comptime cached_function_indices.getUnoptional("HP_World_ShapeCastWithCollector"),
             &id_opaque_tuple,
             &collector_id_opaque_tuple,
             &query_opaque_tuple,
@@ -2079,7 +2847,7 @@ pub const World = struct {
 
         return castOpaque(Result, step_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_Step"),
+            comptime cached_function_indices.getUnoptional("HP_World_Step"),
             &id_opaque_tuple,
             &timestep,
         ));
@@ -2095,7 +2863,7 @@ pub const World = struct {
 
         return castOpaque(Result, set_ideal_step_time_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_SetIdealStepTime"),
+            comptime cached_function_indices.getUnoptional("HP_World_SetIdealStepTime"),
             &id_opaque_tuple,
             &delta_time,
         ));
@@ -2108,7 +2876,7 @@ pub const World = struct {
 
         return castOpaque(Result, set_speed_limit_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_SetSpeedLimit"),
+            comptime cached_function_indices.getUnoptional("HP_World_SetSpeedLimit"),
             &id_opaque_tuple,
             &max_linear_velocity,
             &max_angular_velocity,
@@ -2122,7 +2890,7 @@ pub const World = struct {
 
         return castOpaque(FloatPairResult, get_speed_limit_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetSpeedLimit"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetSpeedLimit"),
             &id_opaque_tuple,
         ));
     }
@@ -2131,7 +2899,7 @@ pub const World = struct {
     pub fn getNextCollisionEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
         return castOpaque(u32, get_next_collision_event_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetNextCollisionEvent"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetNextCollisionEvent"),
             &world,
             &previous_event,
         ));
@@ -2141,7 +2909,7 @@ pub const World = struct {
     pub fn getNextTriggerEvent(self: *const @This(), world: u32, previous_event: u32) u32 {
         return castOpaque(u32, get_next_trigger_event_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetNextTriggerEvent"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetNextTriggerEvent"),
             &world,
             &previous_event,
         ));
@@ -2154,7 +2922,7 @@ pub const World = struct {
 
         return castOpaque(InternalHandleResult, get_collision_events_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetCollisionEvents"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetCollisionEvents"),
             &id_opaque_tuple,
         ));
     }
@@ -2166,7 +2934,7 @@ pub const World = struct {
 
         return castOpaque(InternalHandleResult, get_trigger_events_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_GetTriggerEvents"),
+            comptime cached_function_indices.getUnoptional("HP_World_GetTriggerEvents"),
             &id_opaque_tuple,
         ));
     }
@@ -2177,7 +2945,7 @@ pub const World = struct {
     pub fn castRay(self: *const @This(), world: u32, query: u32, result: u32, max_results: i32) i32 {
         return castOpaque(i32, cast_ray_impl(
             self.physics,
-            comptime cached_function_indices.getDefinitely("HP_World_CastRay"),
+            comptime cached_function_indices.getUnoptional("HP_World_CastRay"),
             &world,
             &query,
             &result,
@@ -2193,104 +2961,169 @@ pub const World = struct {
     const opacify = TypeInstance.opacify;
 };
 
+pub const QueryCollector = struct {
+    physics: *Physics,
+
+    var create_impl = &noopImpl;
+
+    var release_impl = &noopImpl;
+
+    var get_num_hits_impl = &noopImpl;
+
+    var get_cast_ray_result_impl = &noopImpl;
+
+    var get_point_proximity_result_impl = &noopImpl;
+    var get_shape_proximity_result_impl = &noopImpl;
+
+    var get_shape_cast_result_impl = &noopImpl;
+
+    /// Allocates a query collector with sufficient capacity to store the requested number of hits.
+    pub fn create(self: *const @This(), hit_capacity: i32) CollectorResult {
+        return castOpaque(CollectorResult, create_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_Create"),
+            &hit_capacity,
+        ));
+    }
+
+    /// Releases a query collector handle, returning the memory to the plugin.
+    pub fn release(self: *const @This(), id: CollectorId) Result {
+        const id_opaque_array = opacifyTupleElements(CollectorId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(Result, release_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_Release"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Get the number of hits currently stored in the collector.
+    pub fn getNumHits(self: *const @This(), id: CollectorId) IntResult {
+        const id_opaque_array = opacifyTupleElements(CollectorId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(IntResult, get_num_hits_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_GetNumHits"),
+            &id_opaque_tuple,
+        ));
+    }
+
+    /// Get the raycast result stored at `hit_index` in the collector.
+    /// Only valid if the last query performed with this collector was a raycast.
+    pub fn getCastRayResult(self: *const @This(), id: CollectorId, hit_index: i32) RayCastResultResult {
+        const id_opaque_array = opacifyTupleElements(CollectorId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(RayCastResultResult, get_cast_ray_result_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_GetCastRayResult"),
+            &id_opaque_tuple,
+            &hit_index,
+        ));
+    }
+
+    /// Get the proximity result stored at `hit_index` in the collector.
+    /// Only valid if the last query performed with this collector was a point proximity.
+    pub fn getPointProximityResult(self: *const @This(), id: CollectorId, hit_index: i32) PointProximityResultResult {
+        const id_opaque_array = opacifyTupleElements(CollectorId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(PointProximityResultResult, get_point_proximity_result_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_GetPointProximityResult"),
+            &id_opaque_tuple,
+            &hit_index,
+        ));
+    }
+
+    /// Get the proximity result stored at `hit_index` in the collector.
+    /// Only valid if the last query performed with this collector was a point proximity.
+    pub fn getShapeProximityResult(self: *const @This(), id: CollectorId, hit_index: i32) ShapeProximityResultResult {
+        const id_opaque_array = opacifyTupleElements(CollectorId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ShapeProximityResultResult, get_shape_proximity_result_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_GetShapeProximityResult"),
+            &id_opaque_tuple,
+            &hit_index,
+        ));
+    }
+
+    /// Get the shape cast result stored at `hit_index` in the collector.
+    /// Only valid if the last query performed with this collector was a point proximity or a shape proximity test.
+    pub fn getShapeCastResult(self: *const @This(), id: CollectorId, hit_index: i32) ShapeCastResultResult {
+        const id_opaque_array = opacifyTupleElements(CollectorId, &id);
+        const id_opaque_tuple: []const Opaque = &id_opaque_array;
+
+        return castOpaque(ShapeCastResultResult, get_shape_cast_result_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_QueryCollector_GetShapeCastResult"),
+            &id_opaque_tuple,
+            &hit_index,
+        ));
+    }
+
+    const TypeInstance = Emscripten.Bind.Type.Instance;
+
+    const Opaque = TypeInstance.Opaque;
+
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
+};
+
+pub const Debug = struct {
+    physics: *Physics,
+
+    var start_recording_stats_impl = &noopImpl;
+    var stop_recording_stats_impl = &noopImpl;
+
+    /// Start recording performance counters for a single world. Only available in development builds.
+    pub fn startRecordingStats(self: *const @This(), world_id: WorldId) Result {
+        const world_id_opaque_array = opacifyTupleElements(WorldId, &world_id);
+        const world_id_opaque_tuple: []const Opaque = &world_id_opaque_array;
+
+        return castOpaque(Result, start_recording_stats_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Debug_StartRecordingStats"),
+            &world_id_opaque_tuple,
+        ));
+    }
+
+    /// Stop recording performance counters for a world. Only available in development builds.
+    /// This will call a method 'timerData' on the callback object, which can
+    /// retrieve statistics formatted in XML, for use with hkMonitor.
+    pub fn stopRecordingStats(self: *const @This(), hit_capacity: i32) Result {
+        return castOpaque(Result, stop_recording_stats_impl(
+            self.physics,
+            comptime cached_function_indices.getUnoptional("HP_Debug_StopRecordingStats"),
+            &hit_capacity,
+        ));
+    }
+
+    const TypeInstance = Emscripten.Bind.Type.Instance;
+
+    const Opaque = TypeInstance.Opaque;
+
+    const castOpaque = TypeInstance.castOpaque;
+    const opacify = TypeInstance.opacify;
+};
+
 shape: Shape,
 debug_geometry: DebugGeometry,
 body: Body,
-constraint: struct {
-    physics: *Physics,
-
-    // zig fmt: off
-
-    pub fn create(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_Constraint_Create", .{a}); }
-    pub fn release(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_Constraint_Release", .{a}); }
-
-    pub fn setParentBody(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_SetParentBody", .{a, b}); }
-    pub fn getParentBody(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_GetParentBody", .{a, b}); }
-
-    pub fn setChildBody(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_SetChildBody", .{a, b}); }
-    pub fn getChildBody(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_GetChildBody", .{a, b}); }
-
-    pub fn setAnchorInParent(self: *@This(), a: u32, b: u32, c: u32, d: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAnchorInParent", .{a, b, c, d}); }
-    pub fn setAnchorInChild(self: *@This(), a: u32, b: u32, c: u32, d: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAnchorInChild", .{a, b, c, d}); }
-
-    pub fn setCollisionsEnabled(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_SetCollisionsEnabled", .{a, b}); }
-    pub fn getCollisionsEnabled(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_GetCollisionsEnabled", .{a, b}); }
-    
-    pub fn getAppliedImpulses(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAppliedImpulses", .{a, b, c}); }
-
-    pub fn setEnabled(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_SetEnabled", .{a, b}); }
-    pub fn getEnabled(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Constraint_GetEnabled", .{a, b}); }
-
-    pub fn setAxisMinLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMinLimit", .{a, b, c}); }
-    pub fn getAxisMinLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMinLimit", .{a, b, c}); }
-
-    pub fn setAxisMaxLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMaxLimit", .{a, b, c}); }
-    pub fn getAxisMaxLimit(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMaxLimit", .{a, b, c}); }
-
-    pub fn setAxisMode(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMode", .{a, b, c}); }
-    pub fn getAxisMode(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMode", .{a, b, c}); }
-    
-    pub fn setAxisFriction(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisFriction", .{a, b, c}); }
-    pub fn getAxisFriction(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisFriction", .{a, b, c}); }
-
-    pub fn setAxisMotorType(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorType", .{a, b, c}); }
-    pub fn getAxisMotorType(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorType", .{a, b, c}); }
-
-    pub fn setAxisMotorPositionTarget(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorPositionTarget", .{a, b, c}); }
-    pub fn getAxisMotorPositionTarget(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorPositionTarget", .{a, b, c}); }
-
-    pub fn setAxisMotorVelocityTarget(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorVelocityTarget", .{a, b, c}); }
-    pub fn getAxisMotorVelocityTarget(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorVelocityTarget", .{a, b, c}); }
-
-    pub fn setAxisMotorMaxForce(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorMaxForce", .{a, b, c}); }
-    pub fn getAxisMotorMaxForce(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorMaxForce", .{a, b, c}); }
-
-    pub fn setAxisMotorStiffness(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorStiffness", .{a, b, c}); }
-    pub fn getAxisMotorStiffness(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorStiffness", .{a, b, c}); }
-
-    pub fn setAxisMotorDamping(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorDamping", .{a, b, c}); }
-    pub fn getAxisMotorDamping(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorDamping", .{a, b, c}); }
-
-    pub fn setAxisMotorTarget(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisMotorTarget", .{a, b, c}); }
-    pub fn getAxisMotorTarget(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_GetAxisMotorTarget", .{a, b, c}); }
-
-    pub fn setAxisStiffness(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisStiffness", .{a, b, c}); }
-    pub fn setAxisDamping(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_Constraint_SetAxisDamping", .{a, b, c}); }
-
-    // zig fmt: on
-},
+constraint: Constraint,
 world: World,
-query_collector: struct {
-    physics: *Physics,
-
-    // zig fmt: off
-
-    pub fn create(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_QueryCollector_Create", .{a, b}); }
-    pub fn release(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_QueryCollector_Release", .{a}); }
-
-    pub fn getNumHits(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_QueryCollector_GetNumHits", .{a, b}); }
-
-    pub fn getCastRayResult(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_QueryCollector_GetCastRayResult", .{a, b, c}); }
-    pub fn getPointProximityResult(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_QueryCollector_GetPointProximityResult", .{a, b, c}); }
-    pub fn getShapeProximityResult(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_QueryCollector_GetShapeProximityResult", .{a, b, c}); }
-    pub fn getShapeCastResult(self: *@This(), a: u32, b: u32, c: u32) !u32 { return self.physics.callExported("HP_QueryCollector_GetShapeCastResult", .{a, b, c}); }
-
-    // zig fmt: on
-},
-debug: struct {
-    physics: *Physics,
-
-    // zig fmt: off
-
-    pub fn startRecordingStats(self: *@This(), a: u32) !u32 { return self.physics.callExported("HP_Debug_StartRecordingStats", .{a}); }
-    pub fn stopRecordingStats(self: *@This(), a: u32, b: u32) !u32 { return self.physics.callExported("HP_Debug_StopRecordingStats", .{a, b}); }
-
-    // zig fmt: on
-},
+query_collector: QueryCollector,
+debug: Debug,
 
 allocator: mem.Allocator,
 
-heap_buf: []u8 align(8),
+aot_buf: []align(16) u8,
+
+heap_buf: []align(16) u8,
 
 module: wamr.wasm_module_t = null,
 module_inst: wamr.wasm_module_inst_t = null,
@@ -2319,7 +3152,6 @@ embind_temp_arena: heap.ArenaAllocator,
 embind_temp_allocator: mem.Allocator,
 
 const aot_buf_raw = @embedFile("binary/x86_64/HavokPhysics.aot");
-const aot_buf align(8) = aot_buf_raw.*; // Change alignment for WAMR
 
 const stack_size: u32 = 64 * 1024;
 
@@ -2524,8 +3356,8 @@ fn embind_register_bool(
     exec_env: wamr.wasm_exec_env_t,
     type_id: Emscripten.Bind.Type.Id,
     name_ptr: i32,
-    true_value: i32,
-    false_value: i32,
+    _: i32,
+    _: i32,
 ) callconv(.c) void {
     if (getPhysics(exec_env)) |physics| {
         const name = readLatin1String(physics, @intCast(name_ptr)) catch return;
@@ -2543,9 +3375,6 @@ fn embind_register_bool(
             .kind = .bool,
 
             .physics = physics,
-
-            .true_value = @intCast(true_value),
-            .false_value = @intCast(false_value),
         };
 
         physics.registerType(type_id, instance) catch {
@@ -2628,47 +3457,13 @@ fn embind_register_float(
     }
 }
 
-fn embind_register_std_string(
-    exec_env: wamr.wasm_exec_env_t,
-    type_id: Emscripten.Bind.Type.Id,
-    name_ptr: i32,
-) callconv(.c) void {
-    _ = exec_env;
-    _ = type_id;
-    _ = name_ptr;
-}
+fn embind_register_std_string(_: wamr.wasm_exec_env_t, _: Emscripten.Bind.Type.Id, _: i32) callconv(.c) void {}
 
-fn embind_register_std_wstring(
-    exec_env: wamr.wasm_exec_env_t,
-    type_id: Emscripten.Bind.Type.Id,
-    char_size: i32,
-    name_ptr: i32,
-) callconv(.c) void {
-    _ = exec_env;
-    _ = type_id;
-    _ = char_size;
-    _ = name_ptr;
-}
+fn embind_register_std_wstring(_: wamr.wasm_exec_env_t, _: Emscripten.Bind.Type.Id, _: i32, _: i32) callconv(.c) void {}
 
-fn embind_register_emval(
-    exec_env: wamr.wasm_exec_env_t,
-    type_id: Emscripten.Bind.Type.Id,
-) callconv(.c) void {
-    _ = exec_env;
-    _ = type_id;
-}
+fn embind_register_emval(_: wamr.wasm_exec_env_t, _: Emscripten.Bind.Type.Id) callconv(.c) void {}
 
-fn embind_register_memory_view(
-    exec_env: wamr.wasm_exec_env_t,
-    type_id: Emscripten.Bind.Type.Id,
-    data_type: i32,
-    name_ptr: i32,
-) callconv(.c) void {
-    _ = exec_env;
-    _ = type_id;
-    _ = data_type;
-    _ = name_ptr;
-}
+fn embind_register_memory_view(_: wamr.wasm_exec_env_t, _: Emscripten.Bind.Type.Id, _: i32, _: i32) callconv(.c) void {}
 
 const MethodSignature = enum {
     ftf,
@@ -3411,7 +4206,9 @@ pub fn init(allocator: mem.Allocator) !*Physics {
     physics.* = .{
         .allocator = allocator,
 
-        .heap_buf = try allocator.alignedAlloc(u8, .@"8", heap_size),
+        .aot_buf = try allocator.alignedAlloc(u8, .@"16", aot_buf_raw.len), // Change alignment for WAMR
+
+        .heap_buf = try allocator.alignedAlloc(u8, .@"16", heap_size),
 
         .cached_indirect_functions = .init(allocator),
 
@@ -3435,6 +4232,9 @@ pub fn init(allocator: mem.Allocator) !*Physics {
         .query_collector = .{ .physics = physics },
         .debug = .{ .physics = physics },
     };
+
+    // Copy buf onto aot_buf
+    @memcpy(physics.aot_buf, aot_buf_raw);
 
     {
         physics.embind_arena = .init(allocator);
@@ -3504,8 +4304,8 @@ pub fn init(allocator: mem.Allocator) !*Physics {
     var error_buf: [128]u8 = undefined;
 
     physics.module = wamr.wasm_runtime_load(
-        @constCast(&aot_buf),
-        comptime @intCast(aot_buf.len),
+        physics.aot_buf.ptr,
+        comptime @intCast(aot_buf_raw.len),
         &error_buf[0],
         comptime @intCast(error_buf.len),
     );
@@ -3558,7 +4358,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
 
 pub fn deinit(self: *Physics) void {
     // Dump before destroy
-    self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
+    // self.dumpPGOProfData("HavokPhysics.profraw") catch unreachable;
 
     if (self.exec_env) |exec_env| wamr.wasm_runtime_destroy_exec_env(exec_env);
     if (self.module_inst) |module_inst| wamr.wasm_runtime_deinstantiate(module_inst);
@@ -3569,6 +4369,8 @@ pub fn deinit(self: *Physics) void {
     const allocator = self.allocator;
 
     { // Free buffers
+        allocator.free(self.aot_buf);
+
         allocator.free(self.heap_buf);
     }
 
@@ -3938,10 +4740,14 @@ pub fn getIndirectFunction(self: *Physics, index: u32) !wamr.wasm_function_inst_
 }
 
 /// Resets temp values. This does not affect the return values the physical methods returned.
-/// NOTE: This should not be called for each physical call (like world.create) because of arena's characteristics,
-/// therefore you should blockize your method calls, then call this in the block as defer.
+/// NOTE: This should not be called for each physical call (like `world.create`) because of arena's characteristics,
+/// so you should blockize your method calls, then call this in the block as defer.
 pub fn free(self: *Physics) void {
     _ = self.embind_temp_arena.reset(.retain_capacity);
+}
+
+comptime {
+    _ = testing.refAllDeclsRecursive(Physics);
 }
 
 const std = @import("std");
@@ -3958,7 +4764,7 @@ const heap = std.heap;
 const meta = std.meta;
 const fs = std.fs;
 const os = std.os;
-const windows = os.windows;
+const testing = std.testing;
 
 const wamr = @import("wamr").wasm_export;
 

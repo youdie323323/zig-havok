@@ -104,7 +104,7 @@ fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
             comptime return self.get(key) != null;
         }
 
-        /// Returns the value for the key if any.
+        /// Returns the value at comptime for the key if any.
         ///
         /// The return type is promoted to `comptime_int` or `comptime_float`
         /// when `Value` is an integer or a float type, respectively.
@@ -124,7 +124,7 @@ fn ComptimeStringMapWithEql(comptime Value: type, comptime eql: anytype) type {
             }
         }
 
-        /// Returns the value for the key if any.
+        /// Returns the unoptional value at comptime for the key if any.
         pub fn getUnoptional(comptime self: @This(), comptime key: Key) meta.Child(@TypeOf(self.get(key))) {
             comptime return self.get(key) orelse @compileError(fmt.comptimePrint("unregistered key: {s}", .{key}));
         }

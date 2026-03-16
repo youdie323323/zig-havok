@@ -19,7 +19,7 @@ pub fn main() !void {
             _ = da.detectLeaks();
         }
 
-        for (0..10000) |_| {
+        for (0..100000) |_| {
             defer physics.free();
 
             _, const world_id = physics.world.create();
@@ -31,6 +31,12 @@ pub fn main() !void {
                 _ = physics.world.setGravity(world_id, .{ 0, -9.807, 0 });
                 _ = physics.world.getNumBodies(world_id);
             }
+
+            _ = try physics.transformVertices(&.{
+                .{ 1, 2, 3 },
+                .{ 4, 5, 6 },
+                .{ 7, 8, 9 },
+            });
 
             _, const sphere_id = physics.shape.createSphere(.{ 5, 5, 5 }, 0.5);
             defer _ = physics.shape.release(sphere_id);

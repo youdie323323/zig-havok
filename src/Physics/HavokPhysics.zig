@@ -314,6 +314,9 @@ fn replaceMethodImpl(
     switch (function_index) {
         cached_function_indices.getUnoptional("HP_GetStatistics") => get_statistics_impl = function,
 
+        cached_function_indices.getUnoptional("_malloc") => _malloc_impl = function,
+        cached_function_indices.getUnoptional("_free") => _free_impl = function,
+
         // Begin shape
 
         cached_function_indices.getUnoptional("HP_Shape_CreateSphere") => Shape.create_sphere_impl = function,
@@ -948,8 +951,61 @@ pub fn getStatistics(self: *Physics) ObjectStatisticsResult {
 
 // End flats
 
+pub const MemoryReference = struct {
+    /// The offset from the beginning of the heap.
+    u32,
+    /// The number of identically-sized objects the buffer contains.
+    u32,
+};
+
+var _malloc_impl = &noopImpl;
+var _free_impl = &noopImpl;
+
+/// Mallocs a memory.
+pub fn wasmMalloc(self: *Physics, len: u32) u32 {
+    const TypeInstance = Emscripten.Bind.Type.Instance;
+
+    const castOpaque = TypeInstance.castOpaque;
+
+    return castOpaque(u32, _malloc_impl(
+        self,
+        comptime @intCast(cached_function_indices.getUnoptional("_malloc")),
+        &len,
+    ));
+}
+
+/// Frees a memory.
+pub fn wasmFree(self: *Physics, offset: u32) void {
+    _ = _free_impl(
+        self,
+        comptime @intCast(cached_function_indices.getUnoptional("_free")),
+        &offset,
+    );
+}
+
+pub fn transformVertices(self: *Physics, vertices: Shape.Vertices) !MemoryReference {
+    const vertices_len_u32: u32 = @intCast(vertices.len);
+
+    const num_floats = 3 * vertices_len_u32;
+
+    const wasm_ptr = self.wasmMalloc(@sizeOf(Float) * num_floats);
+
+    const raw_ptr = wamr.wasm_runtime_addr_app_to_native(self.module_inst, wasm_ptr);
+    if (raw_ptr == null)
+        return error.InvalidMemoryAccess;
+
+    const dst: [*]Float = @ptrCast(@alignCast(raw_ptr));
+    const src: [*]const Float = @ptrCast(@alignCast(vertices.ptr));
+
+    @memcpy(dst[0..num_floats], src[0..num_floats]);
+
+    return .{ wasm_ptr, num_floats };
+}
+
 pub const Shape = struct {
     physics: *Physics,
+
+    pub const Vertices = []const Vector3;
 
     var create_sphere_impl = &noopImpl;
     var create_capsule_impl = &noopImpl;
@@ -1066,7 +1122,8 @@ pub const Shape = struct {
     /// Creates a geometry which encloses all the `vertices`.
     pub fn createConvexHull(
         self: *const @This(),
-        /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
+        /// Need to be allocated within the WASM memory using `wasmMalloc` and should refer to a buffer populated with `Vector`.
+        /// Zig's is `Vertices`.
         vertices: u32,
         num_vertices: i32,
     ) ShapeResult {
@@ -1081,10 +1138,11 @@ pub const Shape = struct {
     /// Creates a geometry representing the surface of a mesh.
     pub fn createMesh(
         self: *const @This(),
-        /// Need to be allocated within the WASM memory using `_malloc` and should refer to a buffer populated with `Vector`.
+        /// Need to be allocated within the WASM memory using `wasmMalloc` and should refer to a buffer populated with `Vector`.
+        /// Zig's is `Vertices`.
         vertices: u32,
         num_vertices: i32,
-        /// Should be triples of 32-bit integers which index into `vertices`.
+        /// Should be triples of 32-bit integers which index into `vertices` (need to be allocated).
         triangles: u32,
         num_triangles: i32,
     ) ShapeResult {
@@ -4544,38 +4602,27 @@ fn registerType(
 const function_names = [_][]const u8{
     "HP_GetStatistics",
 
-    "HP_Shape_CreateSphere",
-    "HP_Shape_CreateCapsule",
-    "HP_Shape_CreateCylinder",
-    "HP_Shape_CreateBox",
+    "malloc",
+    "free",
+
+    "_malloc",
+    "_free",
+
+    "HP_World_CastRay",
+    "HP_World_GetNextCollisionEvent",
+    "HP_World_GetNextTriggerEvent",
     "HP_Shape_CreateConvexHull",
     "HP_Shape_CreateMesh",
-    "HP_Shape_CreateHeightField",
     "HP_Shape_CreateContainer",
-    "HP_Shape_Release",
-    "HP_Shape_GetType",
-    "HP_Shape_AddChild",
+    "HP_Shape_SetFilterInfo",
+    "HP_Shape_GetFilterInfo",
     "HP_Shape_RemoveChild",
     "HP_Shape_GetNumChildren",
     "HP_Shape_GetChildShape",
-    "HP_Shape_SetChildQSTransform",
-    "HP_Shape_GetChildQSTransform",
-    "HP_Shape_SetFilterInfo",
-    "HP_Shape_GetFilterInfo",
-    "HP_Shape_SetMaterial",
-    "HP_Shape_GetMaterial",
-    "HP_Shape_SetDensity",
-    "HP_Shape_GetDensity",
-    "HP_Shape_GetBoundingBox",
-    "HP_Shape_CastRay",
-    "HP_Shape_BuildMassProperties",
+    "HP_Shape_GetType",
+    "HP_Shape_Release",
     "HP_Shape_SetTrigger",
-    "HP_Shape_PathIterator_GetNext",
-    "HP_Shape_CreateDebugDisplayGeometry",
-
-    "HP_DebugGeometry_GetInfo",
-    "HP_DebugGeometry_Release",
-
+    "HP_Event_AsTrigger",
     "HP_Body_Create",
     "HP_Body_Release",
     "HP_Body_SetShape",
@@ -4584,114 +4631,114 @@ const function_names = [_][]const u8{
     "HP_Body_GetMotionType",
     "HP_Body_SetEventMask",
     "HP_Body_GetEventMask",
-    "HP_Body_SetMassProperties",
-    "HP_Body_GetMassProperties",
-    "HP_Body_SetLinearDamping",
-    "HP_Body_GetLinearDamping",
-    "HP_Body_SetAngularDamping",
-    "HP_Body_GetAngularDamping",
-    "HP_Body_SetGravityFactor",
-    "HP_Body_GetGravityFactor",
-    "HP_Body_GetWorld",
     "HP_Body_GetWorldTransformOffset",
-    "HP_Body_SetPosition",
-    "HP_Body_GetPosition",
-    "HP_Body_SetOrientation",
-    "HP_Body_GetOrientation",
-    "HP_Body_SetQTransform",
-    "HP_Body_GetQTransform",
-    "HP_Body_SetTargetQTransform",
-    "HP_Body_SetLinearVelocity",
-    "HP_Body_GetLinearVelocity",
-    "HP_Body_SetAngularVelocity",
-    "HP_Body_GetAngularVelocity",
-    "HP_Body_ApplyImpulse",
-    "HP_Body_ApplyAngularImpulse",
     "HP_Body_SetActivationState",
     "HP_Body_GetActivationState",
     "HP_Body_SetActivationControl",
     "HP_Body_SetActivationPriority",
-
     "HP_Constraint_Create",
     "HP_Constraint_Release",
     "HP_Constraint_SetParentBody",
     "HP_Constraint_GetParentBody",
     "HP_Constraint_SetChildBody",
     "HP_Constraint_GetChildBody",
-    "HP_Constraint_SetAnchorInParent",
-    "HP_Constraint_SetAnchorInChild",
-    "HP_Constraint_SetCollisionsEnabled",
-    "HP_Constraint_GetCollisionsEnabled",
-    "HP_Constraint_GetAppliedImpulses",
     "HP_Constraint_SetEnabled",
     "HP_Constraint_GetEnabled",
-    "HP_Constraint_SetAxisMinLimit",
-    "HP_Constraint_GetAxisMinLimit",
-    "HP_Constraint_SetAxisMaxLimit",
-    "HP_Constraint_GetAxisMaxLimit",
+    "HP_Constraint_SetCollisionsEnabled",
+    "HP_Constraint_GetCollisionsEnabled",
     "HP_Constraint_SetAxisMode",
     "HP_Constraint_GetAxisMode",
-    "HP_Constraint_SetAxisFriction",
-    "HP_Constraint_GetAxisFriction",
     "HP_Constraint_SetAxisMotorType",
     "HP_Constraint_GetAxisMotorType",
-    "HP_Constraint_SetAxisMotorPositionTarget",
-    "HP_Constraint_GetAxisMotorPositionTarget",
-    "HP_Constraint_SetAxisMotorVelocityTarget",
-    "HP_Constraint_GetAxisMotorVelocityTarget",
-    "HP_Constraint_SetAxisMotorMaxForce",
-    "HP_Constraint_GetAxisMotorMaxForce",
-    "HP_Constraint_SetAxisMotorStiffness",
-    "HP_Constraint_GetAxisMotorStiffness",
-    "HP_Constraint_SetAxisMotorDamping",
-    "HP_Constraint_GetAxisMotorDamping",
-    "HP_Constraint_SetAxisMotorTarget",
-    "HP_Constraint_GetAxisMotorTarget",
-    "HP_Constraint_SetAxisStiffness",
-    "HP_Constraint_SetAxisDamping",
-
     "HP_World_Create",
     "HP_World_Release",
     "HP_World_GetBodyBuffer",
-    "HP_World_SetGravity",
-    "HP_World_GetGravity",
     "HP_World_AddBody",
     "HP_World_RemoveBody",
     "HP_World_GetNumBodies",
-    "HP_World_CastRay",
-    "HP_World_CastRayWithCollector",
-    "HP_World_PointProximityWithCollector",
-    "HP_World_ShapeProximityWithCollector",
-    "HP_World_ShapeCastWithCollector",
-    "HP_World_Step",
-    "HP_World_SetIdealStepTime",
-    "HP_World_SetSpeedLimit",
-    "HP_World_GetSpeedLimit",
     "HP_World_GetCollisionEvents",
-    "HP_World_GetNextCollisionEvent",
-    "HP_Event_AsCollision",
     "HP_World_GetTriggerEvents",
-    "HP_World_GetNextTriggerEvent",
-    "HP_Event_AsTrigger",
-
+    "HP_Debug_StartRecordingStats",
     "HP_QueryCollector_Create",
     "HP_QueryCollector_Release",
     "HP_QueryCollector_GetNumHits",
+    "HP_Shape_CreateDebugDisplayGeometry",
+    "HP_DebugGeometry_GetInfo",
+    "HP_DebugGeometry_Release",
+    "HP_Shape_PathIterator_GetNext",
+    "HP_World_CastRayWithCollector",
+    "HP_Body_GetPosition",
+    "HP_Body_GetLinearVelocity",
+    "HP_Body_GetAngularVelocity",
+    "HP_Constraint_GetAppliedImpulses",
+    "HP_Shape_CreateHeightField",
+    "HP_Body_SetPosition",
+    "HP_Body_SetLinearVelocity",
+    "HP_Body_SetAngularVelocity",
+    "HP_Body_ApplyImpulse",
+    "HP_Body_ApplyAngularImpulse",
+    "HP_Constraint_SetAnchorInParent",
+    "HP_Constraint_SetAnchorInChild",
+    "HP_World_SetGravity",
+    "HP_Body_GetQTransform",
+    "HP_Shape_GetBoundingBox",
+    "HP_Body_SetQTransform",
+    "HP_Body_SetTargetQTransform",
+    "HP_Shape_AddChild",
+    "HP_World_ShapeCastWithCollector",
+    "HP_Body_GetOrientation",
+    "HP_Shape_CreateBox",
+    "HP_Body_SetOrientation",
+    "HP_Shape_GetMaterial",
+    "HP_Shape_SetMaterial",
+    "HP_Shape_BuildMassProperties",
+    "HP_Body_GetMassProperties",
+    "HP_Body_SetMassProperties",
     "HP_QueryCollector_GetCastRayResult",
+    "HP_World_PointProximityWithCollector",
     "HP_QueryCollector_GetPointProximityResult",
+    "HP_World_ShapeProximityWithCollector",
     "HP_QueryCollector_GetShapeProximityResult",
     "HP_QueryCollector_GetShapeCastResult",
-
-    "HP_Debug_StartRecordingStats",
+    "HP_Event_AsCollision",
+    "HP_Shape_GetDensity",
+    "HP_Body_GetLinearDamping",
+    "HP_Body_GetAngularDamping",
+    "HP_Body_GetGravityFactor",
+    "HP_Constraint_GetAxisFriction",
+    "HP_Constraint_GetAxisMinLimit",
+    "HP_Constraint_GetAxisMaxLimit",
+    "HP_Constraint_GetAxisMotorTarget",
+    "HP_Constraint_GetAxisMotorMaxForce",
+    "HP_Constraint_GetAxisMotorPositionTarget",
+    "HP_Constraint_GetAxisMotorVelocityTarget",
+    "HP_Constraint_GetAxisMotorStiffness",
+    "HP_Constraint_GetAxisMotorDamping",
+    "HP_World_GetSpeedLimit",
+    "HP_Shape_CreateSphere",
+    "HP_Shape_CreateCapsule",
+    "HP_Shape_CreateCylinder",
+    "HP_Shape_SetDensity",
+    "HP_Body_SetLinearDamping",
+    "HP_Body_SetAngularDamping",
+    "HP_Body_SetGravityFactor",
+    "HP_Constraint_SetAxisFriction",
+    "HP_Constraint_SetAxisMinLimit",
+    "HP_Constraint_SetAxisMaxLimit",
+    "HP_Constraint_SetAxisStiffness",
+    "HP_Constraint_SetAxisDamping",
+    "HP_Constraint_SetAxisMotorTarget",
+    "HP_Constraint_SetAxisMotorMaxForce",
+    "HP_Constraint_SetAxisMotorPositionTarget",
+    "HP_Constraint_SetAxisMotorVelocityTarget",
+    "HP_Constraint_SetAxisMotorStiffness",
+    "HP_Constraint_SetAxisMotorDamping",
+    "HP_World_Step",
+    "HP_World_SetIdealStepTime",
+    "HP_World_SetSpeedLimit",
     "HP_Debug_StopRecordingStats",
 
     "main",
-
-    "malloc",
-    "free",
-
-    "_malloc",
-    "_free",
 
     "__getTypeName",
 

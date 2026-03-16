@@ -22,7 +22,7 @@ jobs:
         with:
           version: 0.15.2
 
-      - run: zig build-lib src/Physics/HavokPhysics.zig -femit-docs
+      - run: zig build-lib src/Physics/HavokPhysics.zig -femit-docs # We can ignore the errors, since we just needs docs/ files
         continue-on-error: true
 
       - id: deployment

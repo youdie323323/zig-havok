@@ -23,18 +23,7 @@ jobs:
 
           mkdir build && cd build
 
-          cmake .. \
-            -DWAMR_BUILD_AOT=1 \
-            -DWAMR_BUILD_SIMD=1 \
-            -DWAMR_BUILD_REF_TYPES=1 \
-            -DWAMR_BUILD_BULK_MEMORY=1 \
-            -DWAMR_BUILD_BULK_MEMORY_OPT=1 \
-            -DWAMR_BUILD_CALL_INDIRECT_OVERLONG=1 \
-            -DWAMR_BUILD_STATIC_PGO=1 \
-            -DWAMR_BUILD_LIBC_WASI=1 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DWAMR_BUILD_TARGET=X86_64
+          cmake ..
           cmake --build . --config Release
 
       - uses: actions/upload-artifact@v6

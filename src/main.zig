@@ -82,9 +82,6 @@ const heap = std.heap;
 const time = std.time;
 const debug = std.debug;
 const Timer = time.Timer;
-const Thread = std.Thread;
-
-const wamr = @import("wamr").wasm_export;
 
 const Physics = @import("havok").Physics;
 const Result = Physics.Result;

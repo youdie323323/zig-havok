@@ -4466,7 +4466,7 @@ pub fn deinit(self: *Physics) void {
 
 /// Dumps PGO profile data to the path `path`.
 /// The original of this is `dump_pgo_prof_data`.
-pub fn dumpPGOProfData(self: *Physics, path: []const u8) !void {
+fn dumpPGOProfData(self: *Physics, path: []const u8) !void {
     const len = wamr.wasm_runtime_get_pgo_prof_data_size(self.module_inst);
     if (len == 0)
         return error.PgoSizeZero;
@@ -4487,6 +4487,13 @@ pub fn dumpPGOProfData(self: *Physics, path: []const u8) !void {
     log.debug("LLVM raw profile file {s} was generated", .{path});
 }
 
+/// Resets temp values. This does not affect the return values the physical methods returned.
+/// NOTE: This should not be called for each physical call (like `world.create`) because of arena's characteristics,
+/// so you should blockize your method calls, then call this in the block as defer.
+pub fn free(self: *Physics) void {
+    _ = self.embind_temp_arena.reset(.retain_capacity);
+}
+
 fn registerNativeSymbols(
     _: *const Physics,
     comptime module_name: [*c]const u8,
@@ -4500,7 +4507,7 @@ fn registerNativeSymbols(
         return error.NativeRegistrationFailed;
 }
 
-pub fn registerType(
+fn registerType(
     self: *Physics,
     id: Emscripten.Bind.Type.Id,
     instance: *const Emscripten.Bind.Type.Instance,
@@ -4702,7 +4709,7 @@ const cached_function_indices: CachedFunctionIndices = blk: {
     break :blk .initComptime(kvs);
 };
 
-pub fn call(self: *Physics, function: wamr.wasm_function_inst_t, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+fn call(self: *Physics, function: wamr.wasm_function_inst_t, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
     var argv: [16]u32 = undefined;
     var argv_len: u32 = 0;
 
@@ -4737,11 +4744,11 @@ pub fn call(self: *Physics, function: wamr.wasm_function_inst_t, args: []const E
     return argv[0];
 }
 
-pub fn callExported(self: *Physics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
+fn callExported(self: *Physics, comptime name: [:0]const u8, args: []const Emscripten.Bind.Type.Instance.Wire) !u32 {
     return self.call(try self.getExportedFunction(name), args);
 }
 
-pub fn callSimple(self: *Physics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
+fn callSimple(self: *Physics, function: wamr.wasm_function_inst_t, args: anytype) !u32 {
     const args_info_struct_fields = @typeInfo(@TypeOf(args)).@"struct".fields;
 
     var argv: [args_info_struct_fields.len]u32 = undefined;
@@ -4765,12 +4772,12 @@ pub fn callSimple(self: *Physics, function: wamr.wasm_function_inst_t, args: any
     return argv[0];
 }
 
-pub fn callExportedSimple(self: *Physics, comptime name: [:0]const u8, args: anytype) !u32 {
+fn callExportedSimple(self: *Physics, comptime name: [:0]const u8, args: anytype) !u32 {
     return self.callSimple(try self.getExportedFunction(name), args);
 }
 
 /// You must use this function if your arguments is empty.
-pub fn callVoid(self: *Physics, function: wamr.wasm_function_inst_t) !u32 {
+fn callVoid(self: *Physics, function: wamr.wasm_function_inst_t) !u32 {
     var argv: [1]u32 = undefined;
 
     if (!wamr.wasm_runtime_call_wasm(
@@ -4790,11 +4797,11 @@ pub fn callVoid(self: *Physics, function: wamr.wasm_function_inst_t) !u32 {
 }
 
 /// You must use this function if your function is exported and arguments is empty.
-pub fn callExportedVoid(self: *Physics, comptime name: [:0]const u8) !u32 {
+fn callExportedVoid(self: *Physics, comptime name: [:0]const u8) !u32 {
     return self.callVoid(try self.getExportedFunction(name));
 }
 
-pub fn getExportedFunction(self: *Physics, comptime name: [:0]const u8) !wamr.wasm_function_inst_t {
+fn getExportedFunction(self: *Physics, comptime name: [:0]const u8) !wamr.wasm_function_inst_t {
     const function_index = comptime cached_function_indices.get(name) orelse
         @compileError(fmt.comptimePrint("uncached function name: {s}", .{name}));
 
@@ -4809,7 +4816,7 @@ pub fn getExportedFunction(self: *Physics, comptime name: [:0]const u8) !wamr.wa
     };
 }
 
-pub fn getIndirectFunction(self: *Physics, index: u32) !wamr.wasm_function_inst_t {
+fn getIndirectFunction(self: *Physics, index: u32) !wamr.wasm_function_inst_t {
     return self.cached_indirect_functions.get(index) orelse blk: {
         const function = wamr.wasm_table_get_func_inst(self.module_inst, &self.table_inst, index);
 
@@ -4819,15 +4826,8 @@ pub fn getIndirectFunction(self: *Physics, index: u32) !wamr.wasm_function_inst_
     };
 }
 
-/// Resets temp values. This does not affect the return values the physical methods returned.
-/// NOTE: This should not be called for each physical call (like `world.create`) because of arena's characteristics,
-/// so you should blockize your method calls, then call this in the block as defer.
-pub fn free(self: *Physics) void {
-    _ = self.embind_temp_arena.reset(.retain_capacity);
-}
-
 comptime {
-    _ = testing.refAllDeclsRecursive(Physics);
+    testing.refAllDeclsRecursive(Physics);
 }
 
 const std = @import("std");

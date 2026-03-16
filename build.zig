@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "havok",
-        .root_module = b.createModule(.{ // TODO: with strip enabled, calling wasm_runtime_load breaks program
+        .root_module = b.createModule(.{ // TODO: with strip enabled, calling `wasm_runtime_load` breaks program
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
@@ -41,13 +41,4 @@ pub fn build(b: *std.Build) void {
     }
 
     b.installArtifact(exe);
-
-    const install_docs = b.addInstallDirectory(.{
-        .source_dir = exe.getEmittedDocs(),
-        .install_dir = .prefix,
-        .install_subdir = "docs",
-    });
-
-    const docs_step = b.step("docs", "Install docs");
-    docs_step.dependOn(&install_docs.step);
 }

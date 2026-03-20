@@ -1635,7 +1635,7 @@ pub const Body = struct {
     }
 
     /// Configure a body to raise events, based on `event_mask`. Bodies will not raise events by default.
-    /// The event mask should be the integer value of the EventType enum for all the events you wish to opt into, ORed together.
+    /// The event mask should be the integer value of the `EventType` enum for all the events you wish to opt into, ORed together.
     pub fn setEventMask(self: *const @This(), id: BodyId, event_mask: u32) Result {
         const id_opaque_array = opacifyTupleElements(BodyId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
@@ -2010,6 +2010,7 @@ pub const Body = struct {
     }
 
     /// Try to set the activation state of a body.
+    /// NOTE: this seemed to not work.
     pub fn setActivationState(self: *const @This(), id: BodyId, state: ActivationState) Result {
         const id_opaque_array = opacifyTupleElements(BodyId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
@@ -2246,7 +2247,7 @@ pub const Constraint = struct {
         ));
     }
 
-    /// Set the limit behaviour of the specified axis. See ConstraintAxisLimitMode for each effect.
+    /// Set the limit behaviour of the specified axis. See `ConstraintAxisLimitMode` for each effect.
     pub fn setAxisMode(self: *const @This(), id: ConstraintId, axis: ConstraintAxis, limit_mode: ConstraintAxisLimitMode) Result {
         const id_opaque_array = opacifyTupleElements(ConstraintId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;
@@ -2313,7 +2314,7 @@ pub const Constraint = struct {
     }
 
     /// Configure the constraint space of the parent body (in parent body space).
-    /// A third basis vector is calculated perpendicular to axis_x/axis_y.
+    /// A third basis vector is calculated perpendicular to `axis_*`.
     /// You must also configure the anchor in child space.
     pub fn setAnchorInParent(
         self: *const @This(),
@@ -2348,7 +2349,7 @@ pub const Constraint = struct {
     }
 
     /// Configure the constraint space of the child body (in parent body space).
-    /// A third basis vector is calculated perpendicular to axis_x/axis_y.
+    /// A third basis vector is calculated perpendicular to `axis_*`.
     /// You must also configure the anchor in parent space.
     pub fn setAnchorInChild(
         self: *const @This(),
@@ -2778,7 +2779,7 @@ pub const World = struct {
     }
 
     /// Returns the address of the world's body buffer, for use with
-    /// `body.getWorldTransformOffset`. This result can be invalidated if a
+    /// `Body.getWorldTransformOffset`. This result can be invalidated if a
     /// body is added to the world.
     pub fn getBodyBuffer(self: *const @This(), id: WorldId) InternalHandleResult {
         const id_opaque_array = opacifyTupleElements(WorldId, &id);
@@ -2791,7 +2792,7 @@ pub const World = struct {
         ));
     }
 
-    /// Set the global acceleration due to gravity of a world. This is applied to all dynamic bodies each step.
+    /// Set the global acceleration due to gravity of a world. This is applied to all `dynamic` bodies each step.
     pub fn setGravity(self: *const @This(), id: WorldId, gravity: Vector3) Result {
         const id_opaque_array = opacifyTupleElements(WorldId, &id);
         const id_opaque_tuple: []const Opaque = &id_opaque_array;

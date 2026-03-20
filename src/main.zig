@@ -21,7 +21,7 @@ pub fn main() !void {
         defer _ = physics.world.release(world_id);
 
         _ = physics.world.setIdealStepTime(world_id, dt);
-        _ = physics.world.setGravity(world_id, .{ 0, -0.1, 0 });
+        _ = physics.world.setGravity(world_id, .{ 0, -9.81, 0 });
 
         _, const box_id = physics.shape.createBox(.{ 0, 0, 0 }, .{ 0, 0, 0, 1 }, .{ 0.25, 1, 0.5 });
         defer _ = physics.shape.release(box_id);
@@ -32,6 +32,13 @@ pub fn main() !void {
         defer _ = physics.body.release(body_id);
 
         _ = physics.body.setShape(body_id, box_id);
+
+        _, const mass_properties = physics.shape.buildMassProperties(box_id);
+        _ = physics.body.setMassProperties(body_id, mass_properties);
+
+        _ = physics.body.setMotionType(body_id, .dynamic);
+
+        _ = physics.body.setGravityFactor(body_id, 1);
 
         _ = physics.body.setPosition(body_id, .{ 100, 100, 100 });
 

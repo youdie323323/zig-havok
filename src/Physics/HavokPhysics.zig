@@ -101,6 +101,16 @@ const Emscripten = struct {
 
                             break :blk result;
                         } else castOpaqueInner(T, @"opaque"),
+                        .vector => |vector_info| blk: {
+                            const opaques_ptr: [*]allowzero const Opaque = @ptrCast(@alignCast(@"opaque"));
+
+                            var result: T = undefined;
+
+                            inline for (0..vector_info.len) |i|
+                                result[i] = castOpaque(vector_info.child, opaques_ptr[i]);
+
+                            break :blk result;
+                        },
                         else => castOpaqueInner(T, @"opaque"),
                     };
                 }
@@ -655,6 +665,7 @@ pub const ShapeType = enum(u32) {
 
 pub const ShapeTypeResult = struct { Result, ShapeType };
 
+/// Indicates how the body will behave.
 pub const MotionType = enum(u32) {
     static,
     kinematic,
@@ -671,6 +682,7 @@ pub const EventType = enum(u32) {
     trigger_exited,
 };
 
+/// Optional motor which attempts to move a body at a specific velocity, or at a specific position.
 pub const ConstraintMotorType = enum(u32) {
     none,
     velocity,
@@ -681,29 +693,48 @@ pub const ConstraintMotorType = enum(u32) {
 
 pub const ConstraintMotorTypeResult = struct { Result, ConstraintMotorType };
 
+/// How a specific axis can be constrained.
 pub const ConstraintAxisLimitMode = enum(u32) {
+    /// The axis is not restricted at all.
     free,
+    /// The axis has a minimum/maximum limit.
     limited,
+    /// The axis allows no relative movement of the pivots.
     locked,
 };
 
 pub const ConstraintAxisLimitResult = struct { Result, ConstraintAxisLimitMode };
 
+/// The constraint specific axis to use when setting friction, limit mode, max force, ...
 pub const ConstraintAxis = enum(u32) {
+    /// Translation along the primary axis of the constraint.
     linear_x,
+    /// Translation along the second axis of the constraint.
     linear_y,
+    /// Translation along the third axis of the constraint.
     linear_z,
+    /// Rotation around the primary axis of the constraint.
     angular_x,
+    /// Rotation around the second axis of the constraint.
     angular_y,
+    /// Rotation around the third axis of the constraint.
     angular_z,
+    /// A 3D distance limit; similar to specifying the `linear_(x/y/z)` axes
+    /// individually, but the distance calculation uses all three axes
+    /// simultaneously, instead of individually.
     linear_distance,
 };
 
 pub const MaterialCombine = enum(u32) {
+    /// The final value will be the geometric mean of the two values: `sqrt(AB)`.
     geometric_mean,
+    /// The final value will be the smaller of the two: `min(A, B)`.
     minimum,
+    /// The final value will be the larger of the two: `max(A, B)`.
     maximum,
+    /// The final value will be the arithmetic mean of the two values: `(A + B) / 2`.
     artihemic_mean,
+    /// The final value will be the product of the two values: `AB`.
     multiply,
 };
 
@@ -714,6 +745,7 @@ pub const ActivationState = enum(u32) {
 
 pub const ActivationStateResult = struct { Result, ActivationState };
 
+/// Controls the body sleep mode.
 pub const ActivationControl = enum(u32) {
     simulation_controlled,
     always_active,
@@ -721,28 +753,51 @@ pub const ActivationControl = enum(u32) {
 };
 
 pub const MassProperties = struct {
-    /// Center of mass.
+    /// The center of mass, in local space. This is the
+    /// point the body will rotate around when applying
+    /// an angular velocity.
     Vector3,
-    /// Mass.
+    /// The total mass of this object, in kilograms. This
+    /// affects how easy it is to move the body. A value
+    /// of zero will be used as an infinite mass.
     Float,
-    /// Inertia for mass of 1.
+    /// The principal moments of inertia of this object
+    /// for a unit mass. This determines how easy it is
+    /// for the body to rotate. A value of zero on any
+    /// axis will be used as infinite inertia about that
+    /// axis.
     Vector3,
-    /// Inertia orientation.
+    /// The rotation rotating from inertia major axis space
+    /// to parent space (i.e., the rotation which, when
+    /// applied to the 3x3 inertia tensor causes the inertia
+    /// tensor to become a diagonal matrix). This determines
+    /// how the values of inertia are aligned with the parent
+    /// object.
     Quaternion,
 };
 
 pub const MassPropertiesResult = struct { Result, MassProperties };
 
 pub const Material = struct {
-    /// Static friction.
+    /// Static friction. Must be overcome before a pair of objects can start sliding
+    /// relative to each other; for physically-realistic behaviour, it should be at least as high as the
+    /// normal friction value.
     Float,
-    /// Dynamic friction.
+    /// Dynamic friction. Determines how much an object will slow down when it is in contact with another object.
+    /// This is important for simulating realistic physics, such as when an object slides across a surface.
     Float,
-    /// Restitution.
+    /// Restitution. A factor which describes, the amount of energy that is retained after a collision,
+    /// which should be a number between 0 and 1.
+    ///
+    /// A restitution of 0 means that no energy is retained and the objects will not bounce off each other,
+    /// while a restitution of 1 means that all energy is retained and the objects will bounce.
+    ///
+    /// Note, though, due that due to the simulation implementation, an object with a restitution of 1 may
+    /// still lose energy over time.
     Float,
-    /// Friction combine mode.
+    /// Friction combine mode. Describes how two different friction values should be combined.
     MaterialCombine,
-    /// Restitution combine mode.
+    /// Restitution combine mode. Describes how two different restitution values should be combined.
     MaterialCombine,
 };
 
@@ -871,9 +926,9 @@ pub const ShapeCastResultResult = struct { Result, ShapeCastResult };
 pub const CollisionEvent = struct {
     /// Type.
     EventType,
-    /// Contact on body A.
+    /// Contact point on body A.
     ContactPoint,
-    /// Contact on body B.
+    /// Contact point on body B.
     ContactPoint,
     /// Impulse applied.
     Float,
@@ -4448,7 +4503,7 @@ pub fn init(allocator: mem.Allocator) !*Physics {
         comptime @intCast(error_buf.len),
     );
     if (physics.module == null) {
-        log.err("WAMR load failed: {s}", .{mem.sliceTo(&error_buf, 0)});
+        log.err("wasm runtime load failed: {s}", .{mem.sliceTo(&error_buf, 0)});
 
         return error.LoadFailed;
     }

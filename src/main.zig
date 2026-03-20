@@ -1,85 +1,52 @@
 const dt: Float = 1.0 / 60.0;
-const dt_nanoseconds: u64 = @intFromFloat(dt * time.ns_per_s);
+const dt_nanoseconds: u64 = @intFromFloat(time.ns_per_s * dt);
 
 pub fn main() !void {
-    var timer = try Timer.start();
+    var da: heap.DebugAllocator(.{}) = .init;
 
-    const start_time = timer.read();
+    const allocator = da.allocator();
 
-    {
-        var da: heap.DebugAllocator(.{}) = .init;
+    var physics = try Physics.init(allocator);
 
-        const allocator = da.allocator();
+    defer {
+        physics.deinit();
 
-        var physics = try Physics.init(allocator);
-
-        defer {
-            physics.deinit();
-
-            _ = da.detectLeaks();
-        }
-
-        for (0..100000) |_| {
-            defer physics.free();
-
-            _, const world_id = physics.world.create();
-            defer _ = physics.world.release(world_id);
-
-            { // Setup world
-                _ = physics.world.setIdealStepTime(world_id, dt);
-                _ = physics.world.getBodyBuffer(world_id);
-                _ = physics.world.setGravity(world_id, .{ 0, -9.807, 0 });
-                _ = physics.world.getNumBodies(world_id);
-            }
-
-            _ = try physics.transformVertices(&.{
-                .{ 1, 2, 3 },
-                .{ 4, 5, 6 },
-                .{ 7, 8, 9 },
-            });
-
-            _, const sphere_id = physics.shape.createSphere(.{ 5, 5, 5 }, 0.5);
-            defer _ = physics.shape.release(sphere_id);
-
-            { // Setup sphere
-                _ = physics.shape.setFilterInfo(sphere_id, .{ 1, 1 });
-                _ = physics.shape.getFilterInfo(sphere_id);
-
-                _ = physics.shape.setMaterial(sphere_id, .{ 0.75, 0.75, 0, .artihemic_mean, .artihemic_mean });
-                _ = physics.shape.getMaterial(sphere_id);
-
-                _ = physics.shape.setDensity(sphere_id, 0.5);
-                _ = physics.shape.getDensity(sphere_id);
-
-                inline for (0..5) |_| {
-                    _, const debug_geometry_id = physics.debug_geometry.create(sphere_id);
-
-                    _ = physics.debug_geometry.release(debug_geometry_id);
-                }
-
-                _, const container_id = physics.shape.createContainer();
-                defer _ = physics.shape.release(container_id);
-
-                _ = physics.shape.addChild(container_id, sphere_id, .{
-                    .{ 0, 0, 0 },
-                    .{ 0, 0, 0, 1 },
-                    .{ 1, 1, 1 },
-                });
-
-                _ = physics.shape.getNumChildren(container_id);
-
-                _, const body_id = physics.body.create();
-                defer _ = physics.body.release(body_id);
-
-                _ = physics.body.setShape(body_id, container_id);
-            }
-        }
+        _ = da.detectLeaks();
     }
 
-    const elapsed_ns = timer.read() - start_time;
-    const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
+    {
+        defer physics.free();
 
-    debug.print("Setup and Teardown Elapsed Time: {d:.4} ms\n", .{elapsed_ms});
+        _, const world_id = physics.world.create();
+        defer _ = physics.world.release(world_id);
+
+        _ = physics.world.setIdealStepTime(world_id, dt);
+        _ = physics.world.setGravity(world_id, .{ 0, -0.1, 0 });
+
+        _, const box_id = physics.shape.createBox(.{ 0, 0, 0 }, .{ 0, 0, 0, 1 }, .{ 0.25, 1, 0.5 });
+        defer _ = physics.shape.release(box_id);
+
+        _ = physics.shape.setDensity(box_id, 1);
+
+        _, const body_id = physics.body.create();
+        defer _ = physics.body.release(body_id);
+
+        _ = physics.body.setShape(body_id, box_id);
+
+        _ = physics.body.setPosition(body_id, .{ 100, 100, 100 });
+
+        _ = physics.world.addBody(world_id, body_id, false);
+
+        for (0..100) |i| {
+            _ = physics.world.step(world_id, dt);
+
+            _, const box_position = physics.body.getPosition(body_id);
+
+            log.debug("Step {d:3}: Position = ({d:>6.2}, {d:>6.2}, {d:>6.2})", .{
+                i, box_position[0], box_position[1], box_position[2],
+            });
+        }
+    }
 }
 
 const std = @import("std");
